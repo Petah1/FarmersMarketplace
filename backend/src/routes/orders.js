@@ -1,12 +1,11 @@
 const router = require('express').Router();
 const db = require('../db/schema');
 const auth = require('../middleware/auth');
+const requireRole = require('../middleware/requireRole');
 const { sendPayment } = require('../stellar');
 
 // POST /api/orders - buyer places + pays for an order
-router.post('/', auth, async (req, res) => {
-  if (req.user.role !== 'buyer')
-    return res.status(403).json({ error: 'Only buyers can place orders' });
+router.post('/', auth, requireRole('buyer'), async (req, res) => {
 
   const { product_id, quantity } = req.body;
   if (!product_id || !quantity)
@@ -65,9 +64,7 @@ router.get('/', auth, (req, res) => {
 });
 
 // GET /api/orders/sales - farmer's incoming orders
-router.get('/sales', auth, (req, res) => {
-  if (req.user.role !== 'farmer')
-    return res.status(403).json({ error: 'Farmers only' });
+router.get('/sales', auth, requireRole('farmer'), (req, res) => {
 
   const sales = db.prepare(`
     SELECT o.*, p.name as product_name, u.name as buyer_name

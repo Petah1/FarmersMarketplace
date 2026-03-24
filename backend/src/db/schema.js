@@ -9,7 +9,7 @@ db.exec(`
     name TEXT NOT NULL,
     email TEXT UNIQUE NOT NULL,
     password TEXT NOT NULL,
-    role TEXT NOT NULL CHECK(role IN ('farmer', 'buyer')),
+    role TEXT NOT NULL CHECK(role IN ('farmer', 'buyer', 'admin')),
     stellar_public_key TEXT,
     stellar_secret_key TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -40,5 +40,25 @@ db.exec(`
     FOREIGN KEY (product_id) REFERENCES products(id)
   );
 `);
+
+// Migration: recreate users table if admin role is not supported
+const roleCheck = db.prepare(`SELECT sql FROM sqlite_master WHERE type='table' AND name='users'`).get();
+if (roleCheck && !roleCheck.sql.includes("'admin'")) {
+  db.exec(`
+    ALTER TABLE users RENAME TO users_old;
+    CREATE TABLE users (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      email TEXT UNIQUE NOT NULL,
+      password TEXT NOT NULL,
+      role TEXT NOT NULL CHECK(role IN ('farmer', 'buyer', 'admin')),
+      stellar_public_key TEXT,
+      stellar_secret_key TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+    INSERT INTO users SELECT * FROM users_old;
+    DROP TABLE users_old;
+  `);
+}
 
 module.exports = db;

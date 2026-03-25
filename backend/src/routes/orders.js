@@ -1,9 +1,9 @@
 const router = require('express').Router();
 const db = require('../db/schema');
 const auth = require('../middleware/auth');
-const { sendPayment } = require('../stellar');
 const validate = require('../middleware/validate');
 const { sendPayment, getBalance } = require('../stellar');
+const { sendOrderEmails } = require('../mailer');
 
 // POST /api/orders - buyer places + pays for an order
 router.post('/', auth, validate.order, async (req, res) => {
@@ -73,6 +73,15 @@ router.post('/', auth, validate.order, async (req, res) => {
     });
 
     db.prepare('UPDATE orders SET status = ?, stellar_tx_hash = ? WHERE id = ?').run('paid', txHash, orderId);
+
+    const farmer = db.prepare('SELECT * FROM users WHERE id = ?').get(product.farmer_id);
+    sendOrderEmails({
+      order: { id: orderId, quantity, total_price: totalPrice, stellar_tx_hash: txHash },
+      product,
+      buyer,
+      farmer,
+    }).catch(err => console.error('Email notification failed:', err.message));
+
     res.json({ orderId, status: 'paid', txHash, totalPrice });
   } catch (err) {
     // Payment failed — restore stock and mark order failed

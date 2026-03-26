@@ -12,10 +12,15 @@ if (missing.length) {
 const express = require('express');
 const cors = require('cors');
 const cookieParser = require('cookie-parser');
+const { enforceHttps, hsts } = require('./middleware/https');
 const { csrfProtect, csrfTokenHandler } = require('./middleware/csrf');
 const { errorHandler } = require('./middleware/error');
 
 const app = express();
+
+// HTTPS enforcement — must be first
+app.use(enforceHttps);
+app.use(hsts);
 
 app.use(cors({
   origin: process.env.CLIENT_ORIGIN || 'http://localhost:3000',

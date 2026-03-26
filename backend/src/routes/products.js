@@ -5,6 +5,22 @@ const validate = require('../middleware/validate');
 const { err } = require('../middleware/error');
 
 // GET /api/products - public browse with optional filters
+// Query params: category, minPrice, maxPrice, seller, available (default true)
+router.get('/', (req, res) => {
+  const { category, minPrice, maxPrice, seller, available = 'true' } = req.query;
+
+  let sql = `SELECT p.*, u.name as farmer_name FROM products p JOIN users u ON p.farmer_id = u.id WHERE 1=1`;
+  const params = [];
+
+  if (available === 'true') { sql += ` AND p.quantity > 0`; }
+  if (category)  { sql += ` AND p.category = ?`;   params.push(category); }
+  if (minPrice)  { sql += ` AND p.price >= ?`;     params.push(parseFloat(minPrice)); }
+  if (maxPrice)  { sql += ` AND p.price <= ?`;     params.push(parseFloat(maxPrice)); }
+  if (seller)    { sql += ` AND u.name LIKE ?`;    params.push(`%${seller}%`); }
+
+  sql += ` ORDER BY p.created_at DESC`;
+
+  res.json(db.prepare(sql).all(...params));
 router.get('/', (req, res) => {
   const page = Math.max(1, parseInt(req.query.page) || 1);
   const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));

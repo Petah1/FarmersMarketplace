@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
+import { getStellarErrorMessage } from '../utils/stellarErrors';
 
 const s = {
   page: { maxWidth: 800, margin: '0 auto', padding: 24 },
@@ -26,6 +27,7 @@ export default function Wallet() {
   const [txs, setTxs] = useState([]);
   const [funding, setFunding] = useState(false);
   const [fundMsg, setFundMsg] = useState(null);
+  const [loadError, setLoadError] = useState(null);
 
   // Send form state
   const [sendForm, setSendForm] = useState({ destination: '', amount: '', memo: '' });
@@ -33,11 +35,14 @@ export default function Wallet() {
   const [sendMsg, setSendMsg] = useState(null);
 
   async function load() {
+    setLoadError(null);
     try {
       const [w, t] = await Promise.all([api.getWallet(), api.getTransactions()]);
       setWallet(w);
       setTxs(t);
-    } catch {}
+    } catch (err) {
+      setLoadError(getStellarErrorMessage(err));
+    }
   }
 
   useEffect(() => { load(); }, []);
@@ -50,7 +55,7 @@ export default function Wallet() {
       setFundMsg({ type: 'ok', text: res.message });
       load();
     } catch (err) {
-      setFundMsg({ type: 'err', text: err.message });
+      setFundMsg({ type: 'err', text: getStellarErrorMessage(err) });
     } finally {
       setFunding(false);
     }
@@ -87,7 +92,12 @@ export default function Wallet() {
     <div style={s.page}>
       <div style={s.title}>💳 My Wallet</div>
 
-      {/* Balance card */}
+      {loadError && (
+        <div style={{ ...s.msg, background: '#fee', color: '#c0392b', marginBottom: 16 }}>
+          ⚠️ {loadError}
+        </div>
+      )}
+
       <div style={s.card}>
         <div style={{ fontSize: 13, color: '#888', marginBottom: 4 }}>XLM Balance</div>
         <div style={s.balance}>{wallet ? wallet.balance.toFixed(2) : '—'} XLM</div>

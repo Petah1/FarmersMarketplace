@@ -1,12 +1,16 @@
-import React from 'react';
+import React, { useEffect, useContext } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { LoadingProvider, LoadingContext } from './context/LoadingContext';
+import { setLoadingCallback, setLogoutCallback } from './api/client';
 import Navbar from './components/Navbar';
+import LoadingSpinner from './components/LoadingSpinner';
 import { LoginPage, RegisterPage } from './pages/Auth';
 import Dashboard from './pages/Dashboard';
 import Marketplace from './pages/Marketplace';
 import ProductDetail from './pages/ProductDetail';
 import Wallet from './pages/Wallet';
+import Orders from './pages/Orders';
 
 function PrivateRoute({ children, role }) {
   const { user, loading } = useAuth();
@@ -23,10 +27,19 @@ function Home() {
   return <Navigate to={user.role === 'farmer' ? '/dashboard' : '/marketplace'} />;
 }
 
-export default function App() {
+function AppContent() {
+  const { setLoading } = useContext(LoadingContext);
+  const { logout } = useAuth();
+
+  useEffect(() => {
+    setLoadingCallback(setLoading);
+    setLogoutCallback(logout);
+  }, [setLoading, logout]);
+
   return (
-    <AuthProvider>
+    <>
       <Navbar />
+      <LoadingSpinner />
       <div style={{ paddingTop: 24 }}>
         <Routes>
           <Route path="/" element={<Home />} />
@@ -36,8 +49,19 @@ export default function App() {
           <Route path="/product/:id" element={<ProductDetail />} />
           <Route path="/dashboard" element={<PrivateRoute role="farmer"><Dashboard /></PrivateRoute>} />
           <Route path="/wallet" element={<PrivateRoute><Wallet /></PrivateRoute>} />
+          <Route path="/orders" element={<PrivateRoute><Orders /></PrivateRoute>} />
         </Routes>
       </div>
+    </>
+  );
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <LoadingProvider>
+        <AppContent />
+      </LoadingProvider>
     </AuthProvider>
   );
 }

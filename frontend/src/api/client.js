@@ -1,5 +1,17 @@
 const BASE = '/api';
+let loadingCallback = null;
+let logoutCallback = null;
 
+export function setLoadingCallback(callback) {
+  loadingCallback = callback;
+}
+
+export function setLogoutCallback(callback) {
+  logoutCallback = callback;
+}
+
+function getToken() {
+  return localStorage.getItem('token');
 // Access token lives in memory only — never in localStorage
 let accessToken = null;
 
@@ -23,6 +35,54 @@ async function refreshAccessToken() {
   return accessToken;
 }
 
+function getErrorMessage(error, data) {
+  if (data?.error) return data.error;
+  if (typeof data === 'string') return data;
+  if (error?.message) return error.message;
+  return 'Something went wrong';
+}
+
+async function request(path, options = {}, retries = 0) {
+  loadingCallback?.(true);
+  try {
+    const res = await fetch(`${BASE}${path}`, {
+  let res;
+  try {
+    res = await fetch(`${BASE}${path}`, {
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}),
+        ...options.headers,
+      },
+      body: options.body ? JSON.stringify(options.body) : undefined,
+    });
+
+    const data = await res.json().catch(() => null);
+
+    if (res.status === 401) {
+      logoutCallback?.();
+      throw new Error('Session expired');
+    }
+
+    if (!res.ok) {
+      const message = getErrorMessage(null, data);
+      throw new Error(message);
+    }
+
+    return data;
+  } catch (error) {
+    if (retries < 1 && error instanceof TypeError) {
+      await new Promise(r => setTimeout(r, 500));
+      return request(path, options, retries + 1);
+    }
+    throw error;
+  } finally {
+    loadingCallback?.(false);
+  }
+  } catch {
+    throw new Error('Failed to fetch');
+  }
 async function request(path, options = {}, retry = true) {
   const res = await fetch(`${BASE}${path}`, {
     ...options,

@@ -22,6 +22,7 @@ router.get('/transactions', auth, async (req, res) => {
 router.post('/fund', auth, async (req, res) => {
   if (!isTestnet)
     return err(res, 400, 'Only available on testnet', 'testnet_only');
+    return res.status(400).json({ error: 'Only available on testnet' });
 
   const user = db.prepare('SELECT stellar_public_key FROM users WHERE id = ?').get(req.user.id);
   try {

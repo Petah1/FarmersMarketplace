@@ -10,16 +10,19 @@ import Dashboard from './pages/Dashboard';
 import Marketplace from './pages/Marketplace';
 import ProductDetail from './pages/ProductDetail';
 import Wallet from './pages/Wallet';
+import Orders from './pages/Orders';
 
 function PrivateRoute({ children, role }) {
-  const { user } = useAuth();
+  const { user, loading } = useAuth();
+  if (loading) return null; // wait for silent refresh before deciding
   if (!user) return <Navigate to="/login" />;
   if (role && user.role !== role) return <Navigate to="/" />;
   return children;
 }
 
 function Home() {
-  const { user } = useAuth();
+  const { user, loading } = useAuth();
+  if (loading) return null;
   if (!user) return <Navigate to="/login" />;
   return <Navigate to={user.role === 'farmer' ? '/dashboard' : '/marketplace'} />;
 }
@@ -44,6 +47,7 @@ function AppContent() {
           <Route path="/product/:id" element={<ProductDetail />} />
           <Route path="/dashboard" element={<PrivateRoute role="farmer"><Dashboard /></PrivateRoute>} />
           <Route path="/wallet" element={<PrivateRoute><Wallet /></PrivateRoute>} />
+          <Route path="/orders" element={<PrivateRoute><Orders /></PrivateRoute>} />
         </Routes>
       </div>
     </>

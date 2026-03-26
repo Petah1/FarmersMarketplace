@@ -3,8 +3,27 @@ import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { getStellarErrorMessage } from '../utils/stellarErrors';
 
+const DISCLAIMER_KEY = 'testnet_disclaimer_dismissed';
+
 const s = {
   page: { maxWidth: 800, margin: '0 auto', padding: 24 },
+  disclaimer: {
+    background: '#fff8e1',
+    border: '1px solid #f9a825',
+    borderRadius: 10,
+    padding: '14px 16px',
+    marginBottom: 20,
+    display: 'flex',
+    gap: 12,
+    alignItems: 'flex-start',
+  },
+  disclaimerIcon: { fontSize: 20, flexShrink: 0, marginTop: 1 },
+  disclaimerBody: { flex: 1, fontSize: 13, color: '#5d4037', lineHeight: 1.5 },
+  disclaimerTitle: { fontWeight: 700, fontSize: 14, marginBottom: 3, color: '#e65100' },
+  disclaimerDismiss: {
+    background: 'none', border: 'none', cursor: 'pointer',
+    color: '#999', fontSize: 18, lineHeight: 1, padding: 0, flexShrink: 0,
+  },
   title: { fontSize: 24, fontWeight: 700, color: '#2d6a4f', marginBottom: 24 },
   card: { background: '#fff', borderRadius: 12, padding: 24, boxShadow: '0 1px 8px #0001', marginBottom: 24 },
   balance: { fontSize: 40, fontWeight: 700, color: '#2d6a4f' },
@@ -23,6 +42,9 @@ const s = {
 
 export default function Wallet() {
   const { user } = useAuth();
+  const [disclaimerVisible, setDisclaimerVisible] = useState(
+    () => !sessionStorage.getItem(DISCLAIMER_KEY)
+  );
   const [wallet, setWallet] = useState(null);
   const [txs, setTxs] = useState([]);
   const [funding, setFunding] = useState(false);
@@ -33,6 +55,11 @@ export default function Wallet() {
   const [sendForm, setSendForm] = useState({ destination: '', amount: '', memo: '' });
   const [sending, setSending] = useState(false);
   const [sendMsg, setSendMsg] = useState(null);
+
+  function dismissDisclaimer() {
+    sessionStorage.setItem(DISCLAIMER_KEY, '1');
+    setDisclaimerVisible(false);
+  }
 
   async function load() {
     setLoadError(null);
@@ -92,6 +119,22 @@ export default function Wallet() {
     <div style={s.page}>
       <div style={s.title}>💳 My Wallet</div>
 
+      {disclaimerVisible && (
+        <div style={s.disclaimer} role="alert" aria-label="Testnet disclaimer">
+          <span style={s.disclaimerIcon}>⚠️</span>
+          <div style={s.disclaimerBody}>
+            <div style={s.disclaimerTitle}>Testnet Only — No Real Money</div>
+            This wallet uses <strong>Stellar Testnet XLM</strong>, which has <strong>no monetary value</strong> and cannot be exchanged or withdrawn. It exists solely for testing purposes. Never send real assets to a testnet address.
+          </div>
+          <button
+            style={s.disclaimerDismiss}
+            onClick={dismissDisclaimer}
+            aria-label="Dismiss disclaimer"
+            title="Dismiss"
+          >×</button>
+        </div>
+      )}
+
       {loadError && (
         <div style={{ ...s.msg, background: '#fee', color: '#c0392b', marginBottom: 16 }}>
           ⚠️ {loadError}
@@ -102,6 +145,10 @@ export default function Wallet() {
         <div style={{ fontSize: 13, color: '#888', marginBottom: 4 }}>XLM Balance</div>
         <div style={s.balance}>{wallet ? wallet.balance.toFixed(2) : '—'} XLM</div>
         <div style={s.key}>Public Key: {wallet?.publicKey}</div>
+        <div style={{ fontSize: 12, color: '#888', marginTop: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ background: '#fff3cd', color: '#856404', border: '1px solid #ffc107', borderRadius: 4, padding: '1px 7px', fontWeight: 600, fontSize: 11 }}>TESTNET</span>
+          XLM shown here has no real-world value.
+        </div>
 
         <button style={s.btn} onClick={handleFund} disabled={funding}>
           {funding ? 'Funding...' : '🚰 Fund with Testnet XLM'}

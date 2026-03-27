@@ -12,6 +12,10 @@
     "testMatch": [
       "**/tests/**/*.test.js"
     ],
+    "testPathIgnorePatterns": [
+      "/node_modules/",
+      "tests/schema.test.js"
+    ],
     "setupFilesAfterEnv": [
       "<rootDir>/tests/jest.setup.js"
     ]

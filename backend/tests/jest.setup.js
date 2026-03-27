@@ -7,22 +7,23 @@
  */
 
 // --- DB mock ---
-jest.mock('../src/db/schema', () => ({
-  prepare:     jest.fn(),
-  exec:        jest.fn(),
+jest.mock("../src/db/schema", () => ({
+  prepare: jest.fn(),
+  exec: jest.fn(),
   transaction: jest.fn(),
 }));
 
 // --- Stellar mock ---
-jest.mock('../src/utils/stellar', () => ({
-  createWallet:       jest.fn(() => ({ publicKey: 'GPUBKEY', secretKey: 'SSECRET' })),
-  getBalance:         jest.fn().mockResolvedValue(1000),
-  getTransactions:    jest.fn().mockResolvedValue([]),
+jest.mock("../src/utils/stellar", () => ({
+  isTestnet: true,
+  createWallet: jest.fn(() => ({ publicKey: "GPUBKEY", secretKey: "SSECRET" })),
+  getBalance: jest.fn().mockResolvedValue(1000),
+  getTransactions: jest.fn().mockResolvedValue([]),
   fundTestnetAccount: jest.fn().mockResolvedValue({}),
-  sendPayment:        jest.fn().mockResolvedValue('TXHASH123'),
+  sendPayment: jest.fn().mockResolvedValue("TXHASH123"),
 }));
 
 // --- Mailer mock ---
-jest.mock('../src/utils/mailer', () => ({
+jest.mock("../src/utils/mailer", () => ({
   sendOrderEmails: jest.fn().mockResolvedValue({}),
 }));

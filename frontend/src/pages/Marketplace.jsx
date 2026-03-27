@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
+import StarRating from '../components/StarRating';
 import Pagination from '../components/Pagination';
 
 const CATEGORIES = ['all', 'vegetables', 'fruits', 'grains', 'dairy', 'herbs', 'other'];
@@ -190,6 +191,11 @@ export default function Marketplace() {
               <div style={s.desc}>{p.description || 'Fresh from the farm'}</div>
               <div style={s.price}>{p.price} XLM <span style={{ fontSize: 13, fontWeight: 400 }}>/ {p.unit}</span></div>
               <div style={s.qty}>{p.quantity} {p.unit} available</div>
+              {p.review_count > 0 && (
+                <div style={{ marginTop: 6 }}>
+                  <StarRating value={p.avg_rating} count={p.review_count} size={13} />
+                </div>
+              )}
             </div>
           ))}
         </div>

@@ -67,6 +67,26 @@ try {
 try { db.exec(`ALTER TABLE products ADD COLUMN category TEXT DEFAULT 'other'`); } catch {}
 try { db.exec(`ALTER TABLE products ADD COLUMN image_url TEXT`); } catch {}
 
+// Reviews table
+try {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS reviews (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      order_id   INTEGER NOT NULL UNIQUE,
+      buyer_id   INTEGER NOT NULL,
+      product_id INTEGER NOT NULL,
+      rating     INTEGER NOT NULL CHECK(rating BETWEEN 1 AND 5),
+      comment    TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (order_id)   REFERENCES orders(id)   ON DELETE CASCADE,
+      FOREIGN KEY (buyer_id)   REFERENCES users(id)    ON DELETE CASCADE,
+      FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+    );
+  `);
+} catch (err) {
+  console.error('[DB] Failed to create reviews table:', err.message);
+}
+
 // Migrate orders: recreate with extended status CHECK if needed
 try {
   db.exec(`

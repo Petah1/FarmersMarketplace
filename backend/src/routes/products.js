@@ -44,9 +44,14 @@ router.get('/', (req, res) => {
   ).get(...countParams).count;
 
   const products = db.prepare(
-    `SELECT p.*, u.name as farmer_name
-     FROM products p JOIN users u ON p.farmer_id = u.id
+    `SELECT p.*, u.name as farmer_name,
+            ROUND(AVG(r.rating), 1) as avg_rating,
+            COUNT(r.id) as review_count
+     FROM products p
+     JOIN users u ON p.farmer_id = u.id
+     LEFT JOIN reviews r ON r.product_id = p.id
      ${where}
+     GROUP BY p.id
      ORDER BY p.created_at DESC LIMIT ? OFFSET ?`
   ).all(...dataParams, limit, offset);
 
@@ -117,8 +122,14 @@ router.post('/upload-image', auth, (req, res) => {
 // GET /api/products/:id
 router.get('/:id', (req, res) => {
   const product = db.prepare(`
-    SELECT p.*, u.name as farmer_name, u.stellar_public_key as farmer_wallet
-    FROM products p JOIN users u ON p.farmer_id = u.id WHERE p.id = ?
+    SELECT p.*, u.name as farmer_name, u.stellar_public_key as farmer_wallet,
+           ROUND(AVG(r.rating), 1) as avg_rating,
+           COUNT(r.id) as review_count
+    FROM products p
+    JOIN users u ON p.farmer_id = u.id
+    LEFT JOIN reviews r ON r.product_id = p.id
+    WHERE p.id = ?
+    GROUP BY p.id
   `).get(req.params.id);
   if (!product) return err(res, 404, 'Product not found', 'not_found');
   res.json({ success: true, data: product });

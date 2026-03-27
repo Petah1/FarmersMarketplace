@@ -38,6 +38,7 @@ const s = {
   preview: { width: '100%', maxHeight: 180, objectFit: 'cover', borderRadius: 8, marginBottom: 8, display: 'block' },
   removeImg: { background: 'none', border: 'none', color: '#c0392b', cursor: 'pointer', fontSize: 12, marginBottom: 12 },
   imgErr: { color: '#c0392b', fontSize: 12, marginBottom: 8 },
+  fieldErr: { color: '#c0392b', fontSize: 12, marginBottom: 8 },
   uploading: { color: '#888', fontSize: 12, marginBottom: 8 },
   csvBtn: { background: '#218c74', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 20px', cursor: 'pointer', fontWeight: 600, marginRight: 8 },
   csvInput: { display: 'none' },
@@ -67,6 +68,8 @@ export default function Dashboard() {
   const [sales, setSales] = useState([]);
   const [salesMsg, setSalesMsg] = useState({});
   const [formErrors, setFormErrors] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   // image state
   const [imageFile, setImageFile] = useState(null);
@@ -159,28 +162,89 @@ export default function Dashboard() {
   }
 
   async function load() {
+  async function openGallery(productId) {
+    setGalleryProductId(productId);
+    setGalleryErr('');
     try {
-      const res = await api.getMyProducts();
-      setProducts(res.data ?? res);
-    } catch {}
+      const res = await api.getProductImages(productId);
+      setGalleryImages(res.data ?? []);
+    } catch { setGalleryImages([]); }
+  }
+
+  function closeGallery() {
+    setGalleryProductId(null);
+    setGalleryImages([]);
+    setGalleryErr('');
+  }
+
+  async function handleGalleryUpload(e) {
+    const files = Array.from(e.target.files || []);
+    e.target.value = '';
+    if (!files.length) return;
+    const invalid = files.find(f => !ALLOWED_TYPES.includes(f.type) || f.size > MAX_SIZE_BYTES);
+    if (invalid) return setGalleryErr('Only JPEG/PNG/WebP up to 5 MB each.');
+    if (galleryImages.length + files.length > MAX_IMAGES)
+      return setGalleryErr(`Max ${MAX_IMAGES} images. You have ${galleryImages.length}.`);
+    setGalleryUploading(true);
+    setGalleryErr('');
     try {
-      const res = await api.getSales();
-      setSales(res.data ?? res);
-    } catch {}
+      const res = await api.uploadProductImages(galleryProductId, files);
+      setGalleryImages(res.data ?? []);
+      load();
+    } catch (e) { setGalleryErr(e.message); }
+    setGalleryUploading(false);
+  }
+
+  async function handleGalleryDelete(imgId) {
+    if (!confirm('Delete this image?')) return;
+    try {
+      await api.deleteProductImage(galleryProductId, imgId);
+      const res = await api.getProductImages(galleryProductId);
+      setGalleryImages(res.data ?? []);
+      load();
+    } catch (e) { setGalleryErr(e.message); }
+  }
+
+  async function handleGalleryMove(index, dir) {
+    const imgs = [...galleryImages];
+    const swapIdx = index + dir;
+    if (swapIdx < 0 || swapIdx >= imgs.length) return;
+    [imgs[index], imgs[swapIdx]] = [imgs[swapIdx], imgs[index]];
+    const order = imgs.map((img, i) => ({ id: img.id, sort_order: i }));
+    try {
+      const res = await api.reorderProductImages(galleryProductId, order);
+      setGalleryImages(res.data ?? imgs);
+      load();
+    } catch (e) { setGalleryErr(e.message); }
+  }
+
+  async function load() {
+    setLoading(true);
+    setError(null);
+    try {
+      const [productsRes, salesRes, profileRes] = await Promise.all([
+        api.getMyProducts().catch(() => ({ data: [] })),
+        api.getSales().catch(() => ({ data: [] })),
+        user?.id ? api.getFarmer(user.id).catch(() => ({})) : Promise.resolve({})
+      ]);
+      
+      setProducts(productsRes.data ?? productsRes);
+      setSales(salesRes.data ?? salesRes);
+      
+      if (profileRes.data) {
+        const d = profileRes.data;
+        setProfile({ bio: d.bio || '', location: d.location || '', avatar_url: d.avatar_url || '' });
+        if (d.avatar_url) setAvatarPreview(d.avatar_url);
+      }
+    } catch (err) {
+      setError(err?.message || 'Failed to load dashboard data');
+    } finally {
+      setLoading(false);
+    }
   }
 
   useEffect(() => {
     load();
-    // Load current profile
-    if (user?.id) {
-      api.getFarmer(user.id)
-        .then(res => {
-          const d = res.data;
-          setProfile({ bio: d.bio || '', location: d.location || '', avatar_url: d.avatar_url || '' });
-          if (d.avatar_url) setAvatarPreview(d.avatar_url);
-        })
-        .catch(() => {});
-    }
   }, []);
 
   function validateAndSetImage(file) {
@@ -341,6 +405,16 @@ export default function Dashboard() {
     }
   }
 
+  if (loading) return <Spinner />;
+  
+  if (error) {
+    return (
+      <div style={s.page}>
+        <div style={{ ...s.msg, background: '#fee', color: '#c0392b', marginBottom: 16 }}>
+          <strong>Error loading dashboard:</strong> {error}
+        </div>
+      </div>
+    );
   async function handleCsvUpload(e) {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -462,6 +536,8 @@ export default function Dashboard() {
                     if (formErrors[key]) setFormErrors(fe => ({ ...fe, [key]: '' }));
                   }}
                   required={key !== 'unit'}
+                  type={key === 'price' || key === 'quantity' ? 'number' : 'text'}
+                  step={key === 'price' ? 'any' : undefined}
                   type={key === 'price' || key === 'quantity' ? 'number' : undefined}
                   step={key === 'price' ? '0.01' : key === 'quantity' ? '1' : undefined}
                   min={key === 'price' || key === 'quantity' ? '0' : undefined}
@@ -701,6 +777,7 @@ export default function Dashboard() {
 
           <button style={s.btn} type="submit" disabled={avatarUploading}>Save Profile</button>
         </form>
+      </div>
 
       {/* Order management panel */}
       <div style={{ ...s.card, marginTop: 24 }}>

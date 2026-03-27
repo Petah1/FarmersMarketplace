@@ -7,6 +7,16 @@ import { getStellarErrorMessage } from "../utils/stellarErrors";
 import { getErrorMessage } from "../utils/errorMessages";
 import { useXlmRate } from "../utils/useXlmRate";
 import StarRating from "../components/StarRating";
+import React, { useEffect, useState, useCallback } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { api } from '../api/client';
+import { useAuth } from '../context/AuthContext';
+import { useFavorites } from '../context/FavoritesContext';
+import { getStellarErrorMessage } from '../utils/stellarErrors';
+import { getErrorMessage } from '../utils/errorMessages';
+import { useXlmRate } from '../utils/useXlmRate';
+import StarRating from '../components/StarRating';
+import Spinner from '../components/Spinner';
 
 const s = {
   page: { maxWidth: 640, margin: "40px auto", padding: 24 },
@@ -157,6 +167,34 @@ const s = {
     alignItems: "center",
     justifyContent: "center",
   },
+  favoriteBtn: { background: 'none', border: 'none', fontSize: 32, cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', width: 48, height: 48, flexShrink: 0 },
+  name:       { fontSize: 28, fontWeight: 700, color: '#2d6a4f', marginBottom: 4 },
+  farmer:     { color: '#888', marginBottom: 8 },
+  desc:       { color: '#555', marginBottom: 24, lineHeight: 1.6 },
+  price:      { fontSize: 24, fontWeight: 700, color: '#2d6a4f', marginBottom: 8 },
+  row:        { display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 },
+  input:      { width: 80, padding: '8px 12px', border: '1px solid #ddd', borderRadius: 8, fontSize: 16, textAlign: 'center' },
+  btn:        { background: '#2d6a4f', color: '#fff', border: 'none', borderRadius: 8, padding: '12px 28px', cursor: 'pointer', fontWeight: 600, fontSize: 16 },
+  btnSm:      { background: '#2d6a4f', color: '#fff', border: 'none', borderRadius: 8, padding: '9px 20px', cursor: 'pointer', fontWeight: 600, fontSize: 14 },
+  total:      { background: '#f0faf4', borderRadius: 8, padding: '12px 16px', marginBottom: 20, fontSize: 15 },
+  err:        { color: '#c0392b', fontSize: 14, marginTop: 8 },
+  success:    { background: '#d8f3dc', borderRadius: 8, padding: 16, color: '#2d6a4f' },
+  sectionTitle: { fontSize: 18, fontWeight: 700, color: '#2d6a4f', marginBottom: 16 },
+  reviewCard: { borderBottom: '1px solid #f0f0f0', paddingBottom: 14, marginBottom: 14 },
+  reviewName: { fontWeight: 600, fontSize: 14, color: '#333' },
+  reviewDate: { fontSize: 12, color: '#aaa', marginLeft: 8 },
+  reviewText: { fontSize: 14, color: '#555', marginTop: 6, lineHeight: 1.5 },
+  textarea:   { width: '100%', padding: '10px 12px', border: '1px solid #ddd', borderRadius: 8, fontSize: 14, resize: 'vertical', minHeight: 80, boxSizing: 'border-box' },
+  label:      { fontSize: 13, color: '#555', marginBottom: 6, display: 'block' },
+  empty:      { color: '#aaa', fontSize: 14, textAlign: 'center', padding: '24px 0' },
+  select:     { width: '100%', padding: '9px 12px', border: '1px solid #ddd', borderRadius: 8, fontSize: 14, marginBottom: 12 },
+  // gallery
+  galleryMain:   { width: '100%', maxHeight: 320, objectFit: 'cover', borderRadius: 10, marginBottom: 10, display: 'block' },
+  thumbRow:      { display: 'flex', gap: 8, marginBottom: 16, overflowX: 'auto' },
+  thumb:         { width: 64, height: 64, objectFit: 'cover', borderRadius: 6, cursor: 'pointer', border: '2px solid transparent', flexShrink: 0 },
+  thumbActive:   { border: '2px solid #2d6a4f' },
+  galleryNav:    { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
+  navBtn:        { background: 'rgba(0,0,0,0.35)', color: '#fff', border: 'none', borderRadius: '50%', width: 32, height: 32, cursor: 'pointer', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' },
 };
 
 export default function ProductDetail() {
@@ -181,6 +219,8 @@ export default function ProductDetail() {
 
   // Review form state
   const [paidOrders, setPaidOrders] = useState([]);
+  const [images, setImages] = useState([]);
+  const [activeImg, setActiveImg] = useState(0);
   const [reviewRating, setReviewRating] = useState(5);
   const [reviewComment, setReviewComment] = useState("");
   const [reviewOrderId, setReviewOrderId] = useState("");
@@ -211,6 +251,11 @@ export default function ProductDetail() {
         if (imgs.length > 0) setActiveImg(0);
       })
       .catch(() => {});
+    api.getProductImages(id).then(res => {
+      const imgs = res.data ?? [];
+      setImages(imgs);
+      if (imgs.length > 0) setActiveImg(0);
+    }).catch(() => {});
   }, [id, loadReviews, navigate]);
 
   useEffect(() => {
@@ -251,6 +296,7 @@ export default function ProductDetail() {
 
   if (!product)
     return <div style={{ padding: 40, textAlign: "center" }}>Loading...</div>;
+  if (!product) return <Spinner />;
 
   const total = (product.price * qty).toFixed(2);
 
@@ -393,6 +439,7 @@ export default function ProductDetail() {
         {images.length > 0 ? (
           <div style={{ marginBottom: 16 }}>
             <div style={{ position: "relative" }}>
+            <div style={{ position: 'relative' }}>
               <img
                 src={images[activeImg].url}
                 alt={`${product.name} photo ${activeImg + 1}`}
@@ -430,6 +477,9 @@ export default function ProductDetail() {
                   >
                     ›
                   </button>
+                <div style={{ position: 'absolute', top: '50%', transform: 'translateY(-50%)', width: '100%', display: 'flex', justifyContent: 'space-between', padding: '0 8px', boxSizing: 'border-box', pointerEvents: 'none' }}>
+                  <button style={{ ...s.navBtn, pointerEvents: 'all' }} onClick={() => setActiveImg(i => (i - 1 + images.length) % images.length)} aria-label="Previous image">‹</button>
+                  <button style={{ ...s.navBtn, pointerEvents: 'all' }} onClick={() => setActiveImg(i => (i + 1) % images.length)} aria-label="Next image">›</button>
                 </div>
               )}
             </div>
@@ -444,6 +494,7 @@ export default function ProductDetail() {
                       ...s.thumb,
                       ...(i === activeImg ? s.thumbActive : {}),
                     }}
+                    style={{ ...s.thumb, ...(i === activeImg ? s.thumbActive : {}) }}
                     onClick={() => setActiveImg(i)}
                   />
                 ))}
@@ -467,6 +518,23 @@ export default function ProductDetail() {
         )}
 
         {/* Name + favorite button */}
+          <img src={product.image_url} alt={product.name} style={{ width: '100%', maxHeight: 280, objectFit: 'cover', borderRadius: 10, marginBottom: 16 }} />
+        ) : (
+          <div style={{ fontSize: 48, marginBottom: 12 }}>🥬</div>
+        )}
+        <div style={s.name}>{product.name}</div>
+        <div style={s.farmer}>
+          Sold by{' '}
+          <span
+            style={{ cursor: 'pointer', textDecoration: 'underline', color: '#2d6a4f' }}
+            onClick={() => navigate(`/farmer/${product.farmer_id}`)}
+          >
+            {product.farmer_name}
+          </span>
+        {product.image_url
+          ? <img src={product.image_url} alt={product.name} style={{ width: '100%', maxHeight: 280, objectFit: 'cover', borderRadius: 10, marginBottom: 16 }} />
+          : <div style={{ fontSize: 48, marginBottom: 12 }}>🥬</div>
+        }
         <div style={s.header}>
           <div style={s.headerContent}>
             <div style={s.name}>{product.name}</div>
@@ -585,6 +653,8 @@ export default function ProductDetail() {
           Total: <strong>{total} XLM</strong>
         </div>
         {error && <div style={s.err}>{error}</div>}
+        <div style={s.total}>Total: <strong>{total} XLM</strong></div>
+        {error && <div style={s.err} dangerouslySetInnerHTML={{ __html: error }} />}
 
         {product.quantity === 0 ? (
           <div>

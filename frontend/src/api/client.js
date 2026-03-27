@@ -280,4 +280,7 @@ export const api = {
   getWallet: function() { return request('/wallet'); },
   getTransactions: function() { return request('/wallet/transactions'); },
   fundWallet: function() { return request('/wallet/fund', { method: 'POST' }); },
+
+  fundEscrow: (orderId) => request(`/orders/${orderId}/escrow`, { method: 'POST' }),
+  claimEscrow: (orderId) => request(`/orders/${orderId}/claim`, { method: 'POST' }),
 };

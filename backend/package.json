@@ -14,7 +14,10 @@
     ],
     "setupFilesAfterEnv": [
       "<rootDir>/tests/jest.setup.js"
-    ]
+    ],
+    "testEnvironmentOptions": {
+      "env": { "NODE_ENV": "test" }
+    }
   },
   "dependencies": {
     "@stellar/stellar-sdk": "^12.1.0",

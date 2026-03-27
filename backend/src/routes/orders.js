@@ -2,9 +2,8 @@ const router = require('express').Router();
 const db = require('../db/schema');
 const auth = require('../middleware/auth');
 const validate = require('../middleware/validate');
-const { sendPayment, getBalance } = require('../utils/stellar');
-const { sendOrderEmails, sendStatusUpdateEmail } = require('../utils/mailer');
-const { sendOrderEmails, sendLowStockAlert } = require('../utils/mailer');
+const { sendPayment, getBalance, createClaimableBalance, claimBalance } = require('../utils/stellar');
+const { sendOrderEmails, sendStatusUpdateEmail, sendLowStockAlert } = require('../utils/mailer');
 const { err } = require('../middleware/error');
 
 // POST /api/orders - buyer places + pays for an order
@@ -207,6 +206,75 @@ router.patch('/:id/status', auth, (req, res) => {
   }).catch(e => console.error('Status email failed:', e.message));
 
   res.json({ success: true, message: 'Order status updated' });
+});
+
+// POST /api/orders/:id/escrow — buyer funds escrow (claimable balance)
+router.post('/:id/escrow', auth, async (req, res) => {
+  if (req.user.role !== 'buyer') return err(res, 403, 'Only buyers can fund escrow', 'forbidden');
+
+  const order = db.prepare(`
+    SELECT o.*, p.farmer_id, u.stellar_public_key as farmer_wallet
+    FROM orders o
+    JOIN products p ON o.product_id = p.id
+    JOIN users u ON p.farmer_id = u.id
+    WHERE o.id = ?
+  `).get(req.params.id);
+
+  if (!order) return err(res, 404, 'Order not found', 'not_found');
+  if (order.buyer_id !== req.user.id) return err(res, 403, 'Not your order', 'forbidden');
+  if (order.escrow_status !== 'none') return err(res, 400, 'Escrow already initiated', 'invalid_state');
+
+  const buyer = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
+  const balance = await getBalance(buyer.stellar_public_key);
+  if (balance < order.total_price + 0.00001)
+    return res.status(402).json({ success: false, message: 'Insufficient XLM balance', code: 'insufficient_balance' });
+
+  try {
+    const { txHash, balanceId } = await createClaimableBalance({
+      senderSecret: buyer.stellar_secret_key,
+      farmerPublicKey: order.farmer_wallet,
+      buyerPublicKey: buyer.stellar_public_key,
+      amount: order.total_price,
+    });
+
+    db.prepare('UPDATE orders SET escrow_balance_id = ?, escrow_status = ?, stellar_tx_hash = ? WHERE id = ?')
+      .run(balanceId, 'funded', txHash, order.id);
+
+    res.json({ success: true, balanceId, txHash });
+  } catch (e) {
+    res.status(402).json({ success: false, message: 'Escrow creation failed: ' + e.message, code: 'escrow_failed' });
+  }
+});
+
+// POST /api/orders/:id/claim — farmer claims escrow after delivery
+router.post('/:id/claim', auth, async (req, res) => {
+  if (req.user.role !== 'farmer') return err(res, 403, 'Only farmers can claim escrow', 'forbidden');
+
+  const order = db.prepare(`
+    SELECT o.* FROM orders o
+    JOIN products p ON o.product_id = p.id
+    WHERE o.id = ? AND p.farmer_id = ?
+  `).get(req.params.id, req.user.id);
+
+  if (!order) return err(res, 404, 'Order not found or not yours', 'not_found');
+  if (order.escrow_status !== 'funded') return err(res, 400, 'No funded escrow on this order', 'invalid_state');
+  if (order.status !== 'delivered') return err(res, 400, 'Order must be marked delivered before claiming', 'invalid_state');
+
+  const farmer = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
+
+  try {
+    const txHash = await claimBalance({
+      claimantSecret: farmer.stellar_secret_key,
+      balanceId: order.escrow_balance_id,
+    });
+
+    db.prepare('UPDATE orders SET escrow_status = ?, stellar_tx_hash = ? WHERE id = ?')
+      .run('claimed', txHash, order.id);
+
+    res.json({ success: true, txHash });
+  } catch (e) {
+    res.status(402).json({ success: false, message: 'Claim failed: ' + e.message, code: 'claim_failed' });
+  }
 });
 
 module.exports = router;

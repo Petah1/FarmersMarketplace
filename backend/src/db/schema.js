@@ -63,6 +63,10 @@ try {
   process.exit(1);
 }
 
+// Escrow columns migration
+try { db.exec(`ALTER TABLE orders ADD COLUMN escrow_balance_id TEXT`); } catch {}
+try { db.exec(`ALTER TABLE orders ADD COLUMN escrow_status TEXT DEFAULT 'none'`); } catch {}
+
 // Migrate existing DB: add columns if missing
 try { db.exec(`ALTER TABLE products ADD COLUMN category TEXT DEFAULT 'other'`); } catch {}
 try { db.exec(`ALTER TABLE products ADD COLUMN image_url TEXT`); } catch {}

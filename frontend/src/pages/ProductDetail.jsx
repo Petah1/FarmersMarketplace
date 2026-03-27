@@ -47,6 +47,7 @@ export default function ProductDetail() {
   const [loading, setLoading]   = useState(false);
   const [result, setResult]     = useState(null);
   const [error, setError]       = useState('');
+  const [useEscrow, setUseEscrow] = useState(false);
 
   // Review form state
   const [paidOrders, setPaidOrders]     = useState([]);
@@ -96,7 +97,12 @@ export default function ProductDetail() {
     setError('');
     try {
       const res = await api.placeOrder({ product_id: product.id, quantity: qty });
-      setResult(res);
+      if (useEscrow) {
+        const escrowRes = await api.fundEscrow(res.orderId);
+        setResult({ ...res, escrow: true, balanceId: escrowRes.balanceId });
+      } else {
+        setResult(res);
+      }
     } catch (e) {
       setError(getStellarErrorMessage(e));
     } finally {
@@ -133,11 +139,27 @@ export default function ProductDetail() {
     return (
       <div style={s.page}>
         <div style={s.card}>
-          <div style={{ fontSize: 40, marginBottom: 12 }}>✅</div>
+          <div style={{ fontSize: 40, marginBottom: 12 }}>{result.escrow ? '🔒' : '✅'}</div>
           <div style={s.success}>
-            <strong>Payment successful!</strong>
-            <p style={{ marginTop: 8, fontSize: 14 }}>Order #{result.orderId} · {result.totalPrice} XLM paid</p>
-            <p style={{ marginTop: 4, fontSize: 12, wordBreak: 'break-all', color: '#555' }}>TX: {result.txHash}</p>
+            {result.escrow ? (
+              <>
+                <strong>Payment held in escrow!</strong>
+                <p style={{ marginTop: 8, fontSize: 14 }}>Order #{result.orderId} · {result.totalPrice} XLM locked in Stellar Claimable Balance</p>
+                <p style={{ marginTop: 4, fontSize: 12, color: '#555' }}>
+                  Balance ID:{' '}
+                  <a href={`https://stellar.expert/explorer/testnet/claimable-balance/${result.balanceId}`} target="_blank" rel="noreferrer" style={{ color: '#2d6a4f', wordBreak: 'break-all' }}>
+                    {result.balanceId}
+                  </a>
+                </p>
+                <p style={{ marginTop: 4, fontSize: 12, color: '#888' }}>The farmer can claim once delivery is confirmed. You can reclaim after 14 days if undelivered.</p>
+              </>
+            ) : (
+              <>
+                <strong>Payment successful!</strong>
+                <p style={{ marginTop: 8, fontSize: 14 }}>Order #{result.orderId} · {result.totalPrice} XLM paid</p>
+                <p style={{ marginTop: 4, fontSize: 12, wordBreak: 'break-all', color: '#555' }}>TX: {result.txHash}</p>
+              </>
+            )}
           </div>
           <button style={{ ...s.btn, marginTop: 20, background: '#555' }} onClick={() => navigate('/marketplace')}>
             Back to Marketplace
@@ -191,8 +213,15 @@ export default function ProductDetail() {
         <div style={s.total}>Total: <strong>{total} XLM</strong></div>
         {error && <div style={s.err}>{error}</div>}
 
+        {user?.role === 'buyer' && (
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, fontSize: 14, cursor: 'pointer' }}>
+            <input type="checkbox" checked={useEscrow} onChange={e => setUseEscrow(e.target.checked)} />
+            🔒 Use Escrow Payment (funds held until delivery, claimable by farmer after delivery)
+          </label>
+        )}
+
         <button style={s.btn} onClick={handleBuy} disabled={loading}>
-          {loading ? 'Processing payment...' : `Buy Now · ${total} XLM`}
+          {loading ? 'Processing payment...' : `${useEscrow ? '🔒 Pay to Escrow' : 'Buy Now'} · ${total} XLM`}
         </button>
       </div>
 

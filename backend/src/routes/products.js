@@ -189,11 +189,11 @@ router.patch('/:id', auth, (req, res) => {
 
   if (updates.price !== undefined) {
     updates.price = parseFloat(updates.price);
-    if (isNaN(updates.price) || updates.price <= 0) return err(res, 400, 'Price must be positive', 'validation_error');
+    if (isNaN(updates.price) || updates.price <= 0) return err(res, 400, 'Price must be a positive number', 'validation_error');
   }
   if (updates.quantity !== undefined) {
     updates.quantity = parseInt(updates.quantity, 10);
-    if (isNaN(updates.quantity) || updates.quantity < 0) return err(res, 400, 'Quantity must be non-negative', 'validation_error');
+    if (isNaN(updates.quantity) || updates.quantity <= 0) return err(res, 400, 'Quantity must be a positive integer', 'validation_error');
   }
   if (updates.low_stock_threshold !== undefined) {
     updates.low_stock_threshold = parseInt(updates.low_stock_threshold, 10);

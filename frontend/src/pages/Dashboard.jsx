@@ -46,6 +46,7 @@ export default function Dashboard() {
   const [msg, setMsg] = useState(null);
   const [sales, setSales] = useState([]);
   const [salesMsg, setSalesMsg] = useState({});
+  const [formErrors, setFormErrors] = useState({});
 
   // image state
   const [imageFile, setImageFile] = useState(null);
@@ -160,6 +161,27 @@ export default function Dashboard() {
   async function handleAdd(e) {
     e.preventDefault();
     setMsg(null);
+    setFormErrors({});
+
+    // Validate price and quantity
+    const errors = {};
+    const price = parseFloat(form.price);
+    const quantity = parseInt(form.quantity, 10);
+
+    if (!form.name || !form.name.trim()) {
+      errors.name = 'Product name is required';
+    }
+    if (!form.price || isNaN(price) || price <= 0) {
+      errors.price = 'Price must be a positive number';
+    }
+    if (!form.quantity || isNaN(quantity) || quantity <= 0) {
+      errors.quantity = 'Quantity must be a positive integer';
+    }
+
+    if (Object.keys(errors).length > 0) {
+      setFormErrors(errors);
+      return;
+    }
 
     // Upload image first if one is selected but not yet uploaded
     let finalImageUrl = imageUrl;
@@ -233,11 +255,18 @@ export default function Dashboard() {
               <div key={key}>
                 <label style={s.label}>{label}</label>
                 <input
-                  style={s.input}
+                  style={{ ...s.input, borderColor: formErrors[key] ? '#c0392b' : '#ddd' }}
                   value={form[key]}
-                  onChange={e => setForm({ ...form, [key]: e.target.value })}
+                  onChange={e => {
+                    setForm({ ...form, [key]: e.target.value });
+                    if (formErrors[key]) setFormErrors({ ...formErrors, [key]: undefined });
+                  }}
                   required={key !== 'unit'}
+                  type={key === 'price' || key === 'quantity' ? 'number' : undefined}
+                  step={key === 'price' ? '0.01' : key === 'quantity' ? '1' : undefined}
+                  min={key === 'price' || key === 'quantity' ? '0' : undefined}
                 />
+                {formErrors[key] && <div style={{ ...s.imgErr, marginTop: -8, marginBottom: 4 }}>{formErrors[key]}</div>}
               </div>
             ))}
 
@@ -286,7 +315,7 @@ export default function Dashboard() {
 
             {imageErr && <div style={s.imgErr}>{imageErr}</div>}
 
-            <button style={s.btn} type="submit" disabled={uploading}>
+            <button style={s.btn} type="submit" disabled={uploading || Object.keys(formErrors).length > 0}>
               {uploading ? 'Uploading...' : 'List Product'}
             </button>
           </form>

@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
+import { useXlmRate } from '../utils/useXlmRate';
 
 const CATEGORIES = ['all', 'vegetables', 'fruits', 'grains', 'dairy', 'herbs', 'other'];
 
@@ -33,6 +34,7 @@ export default function Marketplace() {
   const [filters, setFilters] = useState(EMPTY_FILTERS);
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+  const { usd } = useXlmRate();
 
   const load = useCallback(async (f) => {
     setLoading(true);
@@ -141,6 +143,7 @@ export default function Marketplace() {
               <div style={s.farmer}>by {p.farmer_name}</div>
               <div style={s.desc}>{p.description || 'Fresh from the farm'}</div>
               <div style={s.price}>{p.price} XLM <span style={{ fontSize: 13, fontWeight: 400 }}>/ {p.unit}</span></div>
+              {usd(p.price) && <div style={{ fontSize: 12, color: '#888', marginTop: 2 }}>{usd(p.price)} <span style={{ fontSize: 10, color: '#aaa' }}>(approx.)</span></div>}
               <div style={s.qty}>{p.quantity} {p.unit} available</div>
             </div>
           ))}

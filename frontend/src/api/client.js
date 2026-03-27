@@ -112,4 +112,6 @@ export const api = {
   getWallet: () => request('/wallet'),
   getTransactions: () => request('/wallet/transactions'),
   fundWallet: () => request('/wallet/fund', { method: 'POST' }),
+
+  getXlmRate: () => request('/rates/xlm-usd'),
 };

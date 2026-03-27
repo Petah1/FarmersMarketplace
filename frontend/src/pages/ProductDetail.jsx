@@ -7,6 +7,7 @@ import { getStellarErrorMessage } from '../utils/stellarErrors';
 import { getErrorMessage } from '../utils/errorMessages';
 import { useXlmRate } from '../utils/useXlmRate';
 import StarRating from '../components/StarRating';
+import Spinner from '../components/Spinner';
 
 const s = {
   page:       { maxWidth: 640, margin: '40px auto', padding: 24 },
@@ -120,7 +121,7 @@ export default function ProductDetail() {
       .catch(() => {});
   }, [id, user]);
 
-  if (!product) return <div style={{ padding: 40, textAlign: 'center' }}>Loading...</div>;
+  if (!product) return <Spinner />;
 
   const total = (product.price * qty).toFixed(2);
 
@@ -332,7 +333,7 @@ export default function ProductDetail() {
         )}
 
         <div style={s.total}>Total: <strong>{total} XLM</strong></div>
-        {error && <div style={s.err}>{error}</div>}
+        {error && <div style={s.err} dangerouslySetInnerHTML={{ __html: error }} />}
 
         <button
           style={{ ...s.btn, ...(loading && { opacity: 0.6, cursor: 'not-allowed' }) }}

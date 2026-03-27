@@ -315,6 +315,14 @@ export default function ProductDetail() {
         <div style={s.total}>Total: <strong>{total} XLM</strong></div>
         {error && <div style={s.err}>{error}</div>}
 
+<<<<<<< fix/disable-buy-button-during-transaction
+        <button
+          style={{ ...s.btn, ...(loading && { opacity: 0.6, cursor: 'not-allowed' }) }}
+          onClick={handleBuy}
+          disabled={loading}
+        >
+          {loading ? 'Processing payment...' : `Buy Now · ${total} XLM`}
+=======
         <button 
           style={{ ...s.btn, position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10 }} 
           onClick={handleBuy} 
@@ -322,6 +330,7 @@ export default function ProductDetail() {
         >
           {loading && <div className="spinner-sm" style={{ width: 16, height: 16, border: '2px solid rgba(255,255,255,0.3)', borderTopColor: '#fff', borderRadius: '50%', animation: 'spin 0.6s linear infinite' }} />}
           {loading ? 'Processing...' : `Buy Now · ${total} XLM`}
+>>>>>>> main
         </button>
 
         <style>{`

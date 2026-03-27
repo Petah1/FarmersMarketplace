@@ -154,6 +154,28 @@ export const api = {
   updateOrderStatus: (id, status) =>
     request(`/orders/${id}/status`, { method: "PATCH", body: { status } }),
 
+  submitReview: (body) => request('/reviews', { method: 'POST', body }),
+
+  getWallet: () => request('/wallet'),
+  getTransactions: () => request('/wallet/transactions'),
+  fundWallet: () => request('/wallet/fund', { method: 'POST' }),
+
+  getFarmer: (id) => request(`/farmers/${id}`),
+  updateFarmerProfile: (body) => request('/farmers/me', { method: 'PATCH', body }),
+
+  // Favorites
+  addFavorite: (productId) => request('/favorites', { method: 'POST', body: { product_id: productId } }),
+  removeFavorite: (productId) => request(`/favorites/${productId}`, { method: 'DELETE' }),
+  getFavorites: (params = {}) => request(`/favorites${toQs(params)}`),
+  checkFavorite: (productId) => request(`/favorites/check/${productId}`),
+
+  getXlmRate: () => request('/rates/xlm-usd'),
+  getAnalytics: () => request('/analytics/farmer'),
+
+  // Admin
+  adminGetUsers: (page = 1) => request(`/admin/users?page=${page}`),
+  adminDeactivateUser: (id) => request(`/admin/users/${id}`, { method: 'DELETE' }),
+  adminGetStats: () => request('/admin/stats'),
   // Reviews
   submitReview: (body) => request("/reviews", { method: "POST", body }),
 

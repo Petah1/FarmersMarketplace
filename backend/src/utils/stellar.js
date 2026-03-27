@@ -98,4 +98,4 @@ async function getTransactions(publicKey) {
   }
 }
 
-module.exports = { isTestnet, createWallet, fundTestnetAccount, getBalance, sendPayment, getTransactions };
+module.exports = { isTestnet, server, createWallet, fundTestnetAccount, getBalance, sendPayment, getTransactions };

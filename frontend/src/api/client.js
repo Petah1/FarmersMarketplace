@@ -252,6 +252,9 @@ export const api = {
   getWallet:      ()           => request('/wallet'),
   getTransactions: ()          => request('/wallet/transactions'),
   fundWallet:     ()           => request('/wallet/fund', { method: 'POST' }),
+  sendXLM:        (body)       => request('/wallet/send', { method: 'POST', body }),
+  // Returns the SSE URL with the token embedded (EventSource can't set headers)
+  getWalletStreamUrl: ()       => `/api/wallet/stream?token=${encodeURIComponent(accessToken || '')}`,
   searchProducts: (q) => request(`/products/search?q=${encodeURIComponent(q)}`),
 
   placeOrder: (body) => request('/orders', { method: 'POST', body }),

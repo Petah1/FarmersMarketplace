@@ -566,8 +566,8 @@ router.post('/', auth, validate.product, async (req, res) => {
   const safeImageUrl    = image_url && /^\/uploads\/[a-f0-9]+\.(jpg|jpeg|png|webp)$/i.test(image_url) ? image_url : null;
 
   const { rows } = await db.query(
-    'INSERT INTO products (farmer_id, name, description, category, price, quantity, unit, image_url, low_stock_threshold) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id',
-    [req.user.id, safeName, safeDescription, safeCategory, price, quantity, safeUnit, safeImageUrl, parseInt(req.body.low_stock_threshold) || 5]
+    'INSERT INTO products (farmer_id, name, description, category, price, quantity, unit, image_url, low_stock_threshold, carbon_kg_per_unit) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id',
+    [req.user.id, safeName, safeDescription, safeCategory, price, quantity, safeUnit, safeImageUrl, parseInt(req.body.low_stock_threshold) || 5, parseFloat(req.body.carbon_kg_per_unit) || null]
   );
   res.json({ success: true, id: rows[0].id, message: 'Product listed' });
 });
@@ -580,7 +580,7 @@ router.patch('/:id', auth, async (req, res) => {
   const product = rows[0];
   if (!product) return err(res, 404, 'Not found or not yours', 'not_found');
 
-  const allowed = ['name', 'description', 'price', 'quantity', 'unit', 'category', 'low_stock_threshold'];
+  const allowed = ['name', 'description', 'price', 'quantity', 'unit', 'category', 'low_stock_threshold', 'carbon_kg_per_unit'];
   const updates = {};
   for (const key of allowed) {
     if (req.body[key] !== undefined) updates[key] = req.body[key];
@@ -866,6 +866,50 @@ router.patch('/:id/images/reorder', auth, async (req, res) => {
     [req.params.id]
   );
   res.json({ success: true, data: images });
+});
+
+// GET /api/products/:id/carbon - Calculate carbon footprint
+router.get('/:id/carbon', async (req, res) => {
+  const { lat, lng } = req.query;
+  
+  const { rows } = await db.query(
+    `SELECT p.*, u.location, u.name as farmer_name
+     FROM products p
+     JOIN users u ON p.farmer_id = u.id
+     WHERE p.id = $1`,
+    [req.params.id]
+  );
+  
+  if (!rows[0]) return err(res, 404, 'Product not found', 'not_found');
+  
+  const product = rows[0];
+  const { estimateCarbonFootprint } = require('../utils/carbon');
+  
+  // Simple distance calculation if coordinates provided
+  let distanceKm = 0;
+  if (lat && lng && product.location) {
+    // Parse location if it contains coordinates (simplified)
+    const locMatch = product.location.match(/(-?\d+\.?\d*),\s*(-?\d+\.?\d*)/);
+    if (locMatch) {
+      const { calculateDistance } = require('../utils/carbon');
+      distanceKm = calculateDistance(parseFloat(lat), parseFloat(lng), parseFloat(locMatch[1]), parseFloat(locMatch[2]));
+    }
+  }
+  
+  const estimate = estimateCarbonFootprint(product, 1, distanceKm);
+  
+  res.json({
+    success: true,
+    data: {
+      productId: product.id,
+      productName: product.name,
+      category: product.category,
+      carbonKgPerUnit: estimate.carbonKg,
+      supermarketCarbonKg: estimate.supermarketCarbonKg,
+      savingsPercent: estimate.savingsPercent,
+      distanceKm: Math.round(distanceKm),
+    },
+  });
 });
 
 module.exports = router;

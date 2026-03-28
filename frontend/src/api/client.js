@@ -34,6 +34,7 @@ export const api = {
   deleteProduct: (id) => request(`/products/${id}`, { method: 'DELETE' }),
 
   placeOrder: (body) => request('/orders', { method: 'POST', body }),
+  getOrderStatus: (id) => request(`/orders/${id}/status`),
   getOrders: () => request('/orders'),
   getSales: () => request('/orders/sales'),
 

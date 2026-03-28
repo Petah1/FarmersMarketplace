@@ -5,7 +5,7 @@ const validate = require('../middleware/validate');
 const { sendPayment, getBalance } = require('../utils/stellar');
 const { sendOrderEmails } = require('../utils/mailer');
 
-// POST /api/orders - buyer places + pays for an order
+// POST /api/orders - buyer places an order; TX submitted async
 router.post('/', auth, validate.order, async (req, res) => {
   if (req.user.role !== 'buyer')
     return res.status(403).json({ error: 'Only buyers can place orders' });
@@ -26,28 +26,22 @@ router.post('/', auth, validate.order, async (req, res) => {
   const buyer = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
   const totalPrice = product.price * quantity;
 
-  // Verify buyer has sufficient XLM balance (amount + network fee)
   const balance = await getBalance(buyer.stellar_public_key);
-  const required = totalPrice + 0.00001;
-  if (balance < required)
+  if (balance < totalPrice + 0.00001)
     return res.status(402).json({
       error: 'Insufficient XLM balance',
-      required: required.toFixed(7),
+      required: (totalPrice + 0.00001).toFixed(7),
       available: balance.toFixed(7),
     });
 
-  // Atomically decrement stock only if sufficient quantity exists, then create order
   const reserveStock = db.transaction((buyerId, productId, qty, total) => {
     const deducted = db.prepare(
       'UPDATE products SET quantity = quantity - ? WHERE id = ? AND quantity >= ?'
     ).run(qty, productId, qty);
-
     if (deducted.changes === 0) throw new Error('Insufficient stock');
-
     const order = db.prepare(
-      'INSERT INTO orders (buyer_id, product_id, quantity, total_price, status) VALUES (?, ?, ?, ?, ?)'
-    ).run(buyerId, productId, qty, total, 'pending');
-
+      `INSERT INTO orders (buyer_id, product_id, quantity, total_price, status) VALUES (?, ?, ?, ?, 'confirming')`
+    ).run(buyerId, productId, qty, total);
     return order.lastInsertRowid;
   });
 
@@ -58,8 +52,10 @@ router.post('/', auth, validate.order, async (req, res) => {
     return res.status(400).json({ error: err.message });
   }
 
+  // Submit TX in background — respond immediately with confirming status
+  res.json({ orderId, status: 'confirming', totalPrice });
+
   try {
-    // Execute Stellar payment
     const txHash = await sendPayment({
       senderSecret: buyer.stellar_secret_key,
       receiverPublicKey: product.farmer_wallet,
@@ -67,23 +63,29 @@ router.post('/', auth, validate.order, async (req, res) => {
       memo: `Order#${orderId}`,
     });
 
-    db.prepare('UPDATE orders SET status = ?, stellar_tx_hash = ? WHERE id = ?').run('paid', txHash, orderId);
+    db.prepare(
+      `UPDATE orders SET status = 'confirming', stellar_tx_hash = ?, tx_submitted_at = CURRENT_TIMESTAMP WHERE id = ?`
+    ).run(txHash, orderId);
 
     const farmer = db.prepare('SELECT * FROM users WHERE id = ?').get(product.farmer_id);
     sendOrderEmails({
       order: { id: orderId, quantity, total_price: totalPrice, stellar_tx_hash: txHash },
-      product,
-      buyer,
-      farmer,
-    }).catch(err => console.error('Email notification failed:', err.message));
-
-    res.json({ orderId, status: 'paid', txHash, totalPrice });
+      product, buyer, farmer,
+    }).catch(e => console.error('Email failed:', e.message));
   } catch (err) {
-    // Payment failed — restore stock and mark order failed
-    db.prepare('UPDATE products SET quantity = quantity + ? WHERE id = ?').run(quantity, product_id);
-    db.prepare('UPDATE orders SET status = ? WHERE id = ?').run('failed', orderId);
-    res.status(402).json({ error: 'Payment failed: ' + err.message, orderId });
+    db.prepare(`UPDATE products SET quantity = quantity + ? WHERE id = ?`).run(quantity, product_id);
+    db.prepare(`UPDATE orders SET status = 'failed' WHERE id = ?`).run(orderId);
+    console.error(`[order ${orderId}] TX submission failed:`, err.message);
   }
+});
+
+// GET /api/orders/:id/status - poll order confirmation status
+router.get('/:id/status', auth, (req, res) => {
+  const order = db.prepare(
+    `SELECT id, status, stellar_tx_hash, total_price, tx_submitted_at FROM orders WHERE id = ? AND buyer_id = ?`
+  ).get(req.params.id, req.user.id);
+  if (!order) return res.status(404).json({ error: 'Order not found' });
+  res.json(order);
 });
 
 // GET /api/orders - buyer's order history

@@ -34,8 +34,9 @@ db.exec(`
     product_id INTEGER NOT NULL,
     quantity INTEGER NOT NULL,
     total_price REAL NOT NULL,
-    status TEXT DEFAULT 'pending' CHECK(status IN ('pending', 'paid', 'failed')),
+    status TEXT DEFAULT 'pending' CHECK(status IN ('pending', 'confirming', 'paid', 'failed')),
     stellar_tx_hash TEXT,
+    tx_submitted_at DATETIME,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (buyer_id) REFERENCES users(id),
     FOREIGN KEY (product_id) REFERENCES products(id)
@@ -44,6 +45,7 @@ db.exec(`
 
 // Migrate existing DB: add category column if missing
 try { db.exec(`ALTER TABLE products ADD COLUMN category TEXT DEFAULT 'other'`); } catch {}
+try { db.exec(`ALTER TABLE orders ADD COLUMN tx_submitted_at DATETIME`); } catch {}
 
 module.exports = db;
 

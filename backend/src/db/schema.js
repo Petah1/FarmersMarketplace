@@ -58,6 +58,11 @@ try {
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (farmer_id) REFERENCES users(id)
     );
+  `);
+} catch (err) {
+  console.error('[DB] Failed to initialize schema:', err.message);
+}
+
 const USE_POSTGRES = !!process.env.DATABASE_URL;
 
 if (USE_POSTGRES) {
@@ -257,7 +262,12 @@ try { db.exec(`ALTER TABLE products ADD COLUMN low_stock_alerted INTEGER DEFAULT
     `CREATE TABLE IF NOT EXISTS stock_alerts (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id INTEGER NOT NULL,
-    );
+      product_id INTEGER NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(user_id, product_id),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+    )`
   `);
 } catch (err) {
   console.error('[DB] Failed to create idempotency_keys table:', err.message);

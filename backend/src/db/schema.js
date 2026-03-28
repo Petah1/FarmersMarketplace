@@ -293,6 +293,18 @@ try {
       expires_at     DATETIME,
       created_at     DATETIME DEFAULT CURRENT_TIMESTAMP
     )`,
+    `CREATE TABLE IF NOT EXISTS crop_alerts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      farmer_id INTEGER NOT NULL,
+      alert_type TEXT NOT NULL CHECK(alert_type IN ('pest', 'disease', 'weather', 'other')),
+      description TEXT NOT NULL,
+      location TEXT,
+      latitude REAL,
+      longitude REAL,
+      severity TEXT DEFAULT 'medium' CHECK(severity IN ('low', 'medium', 'high')),
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (farmer_id) REFERENCES users(id) ON DELETE CASCADE
+    )`,
   ];
 
   for (const sql of migrations) {

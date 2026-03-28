@@ -233,15 +233,11 @@ export default function ProductDetail() {
         product_id: product.id,
         quantity: qty,
         address_id: selectedAddressId || undefined,
+        use_soroban_escrow: useEscrow,
         coupon_code: couponResult ? couponCode.trim() : undefined,
         source_asset: sourceAsset ? { code: sourceAsset.asset_code, issuer: sourceAsset.asset_issuer } : undefined,
       });
-      if (useEscrow) {
-        const escrowRes = await api.fundEscrow(res.orderId);
-        setResult({ ...res, escrow: true, balanceId: escrowRes.balanceId });
-      } else {
-        setResult(res);
-      }
+      setResult({ ...res, escrow: useEscrow });
     } catch (e) {
       setError(getStellarErrorMessage(e) || getErrorMessage(e));
     } finally {
@@ -277,6 +273,19 @@ export default function ProductDetail() {
           <div style={s.success}>
             {result.escrow ? (
               <>
+                <strong>Payment held in escrow!</strong>
+                <p style={{ marginTop: 8, fontSize: 14 }}>
+                  Order #{result.orderId} · {result.totalPrice} XLM locked in
+                  {result.sorobanEscrow ? ' Soroban escrow contract' : ' Stellar claimable balance'}
+                </p>
+                {result.claimableBalanceId ? (
+                  <p style={{ marginTop: 4, fontSize: 12, color: "#555" }}>
+                    Escrow Ref: {result.claimableBalanceId}
+                  </p>
+                ) : null}
+                <p style={{ marginTop: 4, fontSize: 12, color: "#888" }}>
+                  The farmer can claim once delivery is confirmed. You can
+                  reclaim after 14 days if undelivered.
                 <strong>{t('productDetail.escrowSuccess')}</strong>
                 <p style={{ marginTop: 8, fontSize: 14 }}>{t('productDetail.escrowOrderInfo', { id: result.orderId, price: result.totalPrice })}</p>
                 <p style={{ marginTop: 4, fontSize: 12, color: '#555' }}>
@@ -307,6 +316,16 @@ export default function ProductDetail() {
   return (
     <div style={s.page}>
       <div style={s.card}>
+        {product.video_url ? (
+          <video
+            controls
+            src={product.video_url}
+            style={{ width: '100%', maxHeight: 280, borderRadius: 10, marginBottom: 16, background: '#000' }}
+          />
+        ) : null}
+
+        {/* Image gallery */}
+
         {images.length > 0 ? (
           <div style={{ marginBottom: 16 }}>
             <div style={{ position: 'relative' }}>

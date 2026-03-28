@@ -51,6 +51,7 @@ router.use('/api/wallet/send',      sendLimiter);
 // Routes
 router.use('/api/auth',          require('./auth'));
 router.use('/api/products',      require('./products'));
+router.use('/api/products',      require('./productVideos'));
 router.use('/api/products/:id/calendar', require('./calendar'));
 router.use('/api/orders',        require('./orders'));
 router.use('/api/wallet',        require('./alerts'));
@@ -63,6 +64,7 @@ router.use('/api/rates',         require('./rates'));
 router.use('/api/favorites',     require('./favorites'));
 router.use('/api/addresses',     require('./addresses'));
 router.use('/api/messages',      require('./messages'));
+router.use('/api/notifications', require('./notifications'));
 router.use('/api/contracts',     require('./contracts'));
 router.use('/api/products/bulk',   require('./bulkUpload'));
 router.use('/api/products/import', require('./productImport'));

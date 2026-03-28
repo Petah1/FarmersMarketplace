@@ -86,6 +86,8 @@ export default function Dashboard() {
   const [formErrors, setFormErrors] = useState({});
   const [sales, setSales] = useState([]);
   const [salesMsg, setSalesMsg] = useState({});
+  const [forecastByProduct, setForecastByProduct] = useState({});
+  const [videoUploadingByProduct, setVideoUploadingByProduct] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -245,6 +247,28 @@ export default function Dashboard() {
     } catch (e) { setGalleryErr(e.message); }
   }
 
+
+  async function handleVideoUpload(productId, file) {
+    if (!file) return;
+    if (file.type !== 'video/mp4') {
+      alert('Only MP4 videos are allowed.');
+      return;
+    }
+    if (file.size > 50 * 1024 * 1024) {
+      alert('Video must be 50 MB or smaller.');
+      return;
+    }
+
+    setVideoUploadingByProduct((prev) => ({ ...prev, [productId]: true }));
+    try {
+      await api.uploadProductVideo(productId, file);
+      await load();
+    } catch (e) {
+      alert(getErrorMessage(e));
+    } finally {
+      setVideoUploadingByProduct((prev) => ({ ...prev, [productId]: false }));
+    }
+  }
   async function load() {
   async function openGallery(productId) {
     setGalleryProductId(productId);
@@ -306,11 +330,14 @@ export default function Dashboard() {
     setLoading(true);
     setError(null);
     try {
+      const [productsRes, salesRes, profileRes, bundlesRes, forecastRes] = await Promise.all([
+      const [productsRes, salesRes, profileRes, bundlesRes, couponsRes] = await Promise.all([
       const [productsRes, salesRes, profileRes, bundlesRes, couponsRes, coopsRes] = await Promise.all([
         api.getMyProducts().catch(() => ({ data: [] })),
         api.getSales().catch(() => ({ data: [] })),
         user?.id ? api.getFarmer(user.id).catch(() => ({})) : Promise.resolve({}),
         api.getBundles().catch(() => ({ data: [] })),
+        api.getForecast().catch(() => ({ data: [] })),
         api.getMyCoupons().catch(() => ({ data: [] })),
         api.getCooperatives().catch(() => ({ data: [] })),
       ]);
@@ -318,6 +345,12 @@ export default function Dashboard() {
       setProducts(productsRes.data ?? productsRes);
       setSales(salesRes.data ?? salesRes);
       setBundles((bundlesRes.data ?? []).filter(b => b.farmer_id === user?.id));
+
+      const forecastMap = {};
+      (forecastRes.data ?? []).forEach((item) => {
+        forecastMap[item.product_id] = item;
+      });
+      setForecastByProduct(forecastMap);
       setCoupons(couponsRes.data ?? []);
       const coops = coopsRes.data ?? [];
       setCooperatives(coops);
@@ -898,6 +931,19 @@ export default function Dashboard() {
                   <div>
                     <div style={{ fontWeight: 600 }}>{p.name}</div>
                     <div style={{ fontSize: 13, color: '#666' }}>{p.price} XLM · {p.quantity} {p.unit}</div>
+                    {forecastByProduct[p.id]?.note ? (
+                      <div style={{ fontSize: 12, color: '#888' }}>{forecastByProduct[p.id].note}</div>
+                    ) : forecastByProduct[p.id] ? (
+                      <div style={{ fontSize: 12, color: '#555' }}>
+                        Demand hint: {forecastByProduct[p.id].avg_weekly_sales} units/week {' '}
+                        {forecastByProduct[p.id].trend === 'up' ? '↑' : forecastByProduct[p.id].trend === 'down' ? '↓' : '→'}
+                      </div>
+                    ) : null}
+                    {p.video_url ? (
+                      <a href={p.video_url} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: '#2d6a4f' }}>
+                        View video
+                      </a>
+                    ) : null}
                   </div>
                 </div>
                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
@@ -924,6 +970,19 @@ export default function Dashboard() {
                   >
                     📅 Calendar
                   </button>
+                  <label style={{ ...s.btn, padding: '4px 10px', fontSize: 12, background: '#1f6f8b', cursor: 'pointer' }}>
+                    {videoUploadingByProduct[p.id] ? 'Uploading...' : '🎬 Video'}
+                    <input
+                      type="file"
+                      accept="video/mp4"
+                      style={{ display: 'none' }}
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        e.target.value = '';
+                        handleVideoUpload(p.id, file);
+                      }}
+                    />
+                  </label>
                   <input
                     type="number" min="1" placeholder="+Qty"
                     style={{ ...s.input, width: 70, marginBottom: 0, padding: '4px 8px' }}

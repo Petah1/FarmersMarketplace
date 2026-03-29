@@ -327,6 +327,8 @@ try {
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (farmer_id) REFERENCES users(id) ON DELETE CASCADE
     )`,
+    `ALTER TABLE orders ADD COLUMN fee_bumped INTEGER DEFAULT 0`,
+  ];  for (const sql of migrations) {
     `CREATE TABLE IF NOT EXISTS contracts_registry (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       contract_id TEXT NOT NULL UNIQUE,

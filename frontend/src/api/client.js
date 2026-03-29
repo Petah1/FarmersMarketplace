@@ -321,6 +321,9 @@ export const api = {
   adminGetUsers: (page = 1) => request(`/admin/users?page=${page}`),
   adminDeactivateUser: (id) => request(`/admin/users/${id}`, { method: 'DELETE' }),
   adminGetStats: () => request('/admin/stats'),
+  adminGetContracts: (qs = '') => request(`/admin/contracts${qs}`),
+  adminRegisterContract: (body) => request('/admin/contracts', { method: 'POST', body }),
+  adminDeregisterContract: (id) => request(`/admin/contracts/${id}`, { method: 'DELETE' }),
 
   getAddresses: () => request('/addresses'),
   createAddress: (body) => request('/addresses', { method: 'POST', body }),

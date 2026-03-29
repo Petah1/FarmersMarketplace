@@ -29,6 +29,10 @@ export default function AdminDashboard() {
   const [users, setUsers] = useState([]);
   const [pagination, setPagination] = useState({ page: 1, pages: 1, total: 0 });
   const [error, setError] = useState('');
+  const [contracts, setContracts] = useState([]);
+  const [contractForm, setContractForm] = useState({ contract_id: '', name: '', type: 'escrow', network: 'testnet' });
+  const [contractMsg, setContractMsg] = useState('');
+  const [contractFilter, setContractFilter] = useState({ network: '', type: '' });
 
   async function loadStats() {
     try {
@@ -48,7 +52,35 @@ export default function AdminDashboard() {
   useEffect(() => {
     loadStats();
     loadUsers(1);
+    loadContracts();
   }, []);
+
+  async function loadContracts(filters = contractFilter) {
+    try {
+      const params = new URLSearchParams(Object.entries(filters).filter(([, v]) => v)).toString();
+      const res = await api.adminGetContracts(params ? `?${params}` : '');
+      setContracts(res.data ?? []);
+    } catch (e) { setContractMsg(e.message); }
+  }
+
+  async function handleRegisterContract(e) {
+    e.preventDefault();
+    setContractMsg('');
+    try {
+      await api.adminRegisterContract(contractForm);
+      setContractForm({ contract_id: '', name: '', type: 'escrow', network: 'testnet' });
+      setContractMsg('Contract registered.');
+      loadContracts();
+    } catch (err) { setContractMsg(err.message); }
+  }
+
+  async function handleDeregisterContract(id) {
+    if (!confirm('Deregister this contract?')) return;
+    try {
+      await api.adminDeregisterContract(id);
+      loadContracts();
+    } catch (e) { setContractMsg(e.message); }
+  }
 
   async function handleDeactivate(id, name) {
     if (!confirm(`Deactivate user "${name}"?`)) return;
@@ -136,6 +168,76 @@ export default function AdminDashboard() {
             onClick={() => loadUsers(pagination.page + 1)}
           >Next →</button>
         </div>
+      </div>
+
+      {/* Contract Registry */}
+      <div style={{ ...s.card, marginTop: 32 }}>
+        <h3 style={{ marginBottom: 16, color: '#333' }}>🔗 Contract Registry</h3>
+        {contractMsg && <div style={{ ...s.err, marginBottom: 12 }}>{contractMsg}</div>}
+        <form onSubmit={handleRegisterContract} style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
+          <input style={{ padding: '7px 10px', border: '1px solid #ddd', borderRadius: 6, fontSize: 13, flex: '2 1 200px' }}
+            placeholder="Contract ID (e.g. CB...)" value={contractForm.contract_id}
+            onChange={e => setContractForm(f => ({ ...f, contract_id: e.target.value }))} required />
+          <input style={{ padding: '7px 10px', border: '1px solid #ddd', borderRadius: 6, fontSize: 13, flex: '1 1 120px' }}
+            placeholder="Name" value={contractForm.name}
+            onChange={e => setContractForm(f => ({ ...f, name: e.target.value }))} required />
+          <select style={{ padding: '7px 10px', border: '1px solid #ddd', borderRadius: 6, fontSize: 13 }}
+            value={contractForm.type} onChange={e => setContractForm(f => ({ ...f, type: e.target.value }))}>
+            <option value="escrow">Escrow</option>
+            <option value="token">Token</option>
+            <option value="other">Other</option>
+          </select>
+          <select style={{ padding: '7px 10px', border: '1px solid #ddd', borderRadius: 6, fontSize: 13 }}
+            value={contractForm.network} onChange={e => setContractForm(f => ({ ...f, network: e.target.value }))}>
+            <option value="testnet">Testnet</option>
+            <option value="mainnet">Mainnet</option>
+          </select>
+          <button type="submit" style={{ ...s.deactivate, background: '#2d6a4f', color: '#fff', padding: '7px 16px' }}>Register</button>
+        </form>
+        <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+          <select style={{ padding: '6px 10px', border: '1px solid #ddd', borderRadius: 6, fontSize: 13 }}
+            value={contractFilter.network} onChange={e => { const f = { ...contractFilter, network: e.target.value }; setContractFilter(f); loadContracts(f); }}>
+            <option value="">All Networks</option>
+            <option value="testnet">Testnet</option>
+            <option value="mainnet">Mainnet</option>
+          </select>
+          <select style={{ padding: '6px 10px', border: '1px solid #ddd', borderRadius: 6, fontSize: 13 }}
+            value={contractFilter.type} onChange={e => { const f = { ...contractFilter, type: e.target.value }; setContractFilter(f); loadContracts(f); }}>
+            <option value="">All Types</option>
+            <option value="escrow">Escrow</option>
+            <option value="token">Token</option>
+            <option value="other">Other</option>
+          </select>
+        </div>
+        <table style={s.table}>
+          <thead>
+            <tr>
+              <th style={s.th}>Contract ID</th>
+              <th style={s.th}>Name</th>
+              <th style={s.th}>Type</th>
+              <th style={s.th}>Network</th>
+              <th style={s.th}>Deployed</th>
+              <th style={s.th}>By</th>
+              <th style={s.th}>Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {contracts.length === 0
+              ? <tr><td colSpan={7} style={{ ...s.td, color: '#aaa', textAlign: 'center' }}>No contracts registered.</td></tr>
+              : contracts.map(c => (
+                <tr key={c.id}>
+                  <td style={{ ...s.td, fontFamily: 'monospace', fontSize: 12 }}>{c.contract_id.slice(0, 16)}…</td>
+                  <td style={s.td}>{c.name}</td>
+                  <td style={s.td}><span style={{ ...s.badge('buyer'), background: c.type === 'escrow' ? '#d8f3dc' : c.type === 'token' ? '#cce5ff' : '#eee' }}>{c.type}</span></td>
+                  <td style={s.td}><span style={{ ...s.badge('buyer'), background: c.network === 'mainnet' ? '#ffeaa7' : '#eee' }}>{c.network}</span></td>
+                  <td style={s.td}>{new Date(c.deployed_at).toLocaleDateString()}</td>
+                  <td style={s.td}>{c.deployed_by_name || '—'}</td>
+                  <td style={s.td}><button style={s.deactivate} onClick={() => handleDeregisterContract(c.id)}>Remove</button></td>
+                </tr>
+              ))
+            }
+          </tbody>
+        </table>
       </div>
     </div>
   );

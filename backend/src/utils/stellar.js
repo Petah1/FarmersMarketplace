@@ -1,4 +1,6 @@
 const StellarSdk = require("@stellar/stellar-sdk");
+const bip39 = require("bip39");
+const StellarHDWallet = require("stellar-hd-wallet");
 
 const STELLAR_NETWORK = (
   process.env.STELLAR_NETWORK || "testnet"
@@ -38,6 +40,34 @@ function createWallet() {
   return { publicKey: keypair.publicKey(), secretKey: keypair.secret() };
 }
 
+/**
+ * Generate a BIP39 mnemonic and derive a Stellar keypair from it.
+ * Returns { mnemonic, publicKey, secretKey }
+ */
+function createWalletFromMnemonic() {
+  const mnemonic = bip39.generateMnemonic(256); // 24-word phrase
+  const wallet = StellarHDWallet.fromMnemonic(mnemonic);
+  const keypair = StellarSdk.Keypair.fromSecret(wallet.getSecret(0));
+  return {
+    mnemonic,
+    publicKey: keypair.publicKey(),
+    secretKey: keypair.secret(),
+  };
+}
+
+/**
+ * Derive a Stellar keypair from an existing BIP39 mnemonic.
+ * Returns { publicKey, secretKey }
+ */
+function deriveKeypairFromMnemonic(mnemonic) {
+  if (!bip39.validateMnemonic(mnemonic)) {
+    throw new Error("Invalid mnemonic phrase");
+  }
+  const wallet = StellarHDWallet.fromMnemonic(mnemonic);
+  const keypair = StellarSdk.Keypair.fromSecret(wallet.getSecret(0));
+  return { publicKey: keypair.publicKey(), secretKey: keypair.secret() };
+}
+
 async function fundTestnetAccount(publicKey) {
   const response = await fetch(
     `https://friendbot.stellar.org?addr=${publicKey}`,
@@ -55,23 +85,55 @@ async function getBalance(publicKey) {
   }
 }
 
+/**
+ * Wrap an inner transaction with a FeeBumpTransaction so the platform account
+ * pays the network fee instead of the buyer.
+ * Returns the fee-bumped transaction (signed by the fee account).
+ */
+async function wrapWithFeeBump(innerTx, feeAccountSecret) {
+  const feeKeypair = StellarSdk.Keypair.fromSecret(feeAccountSecret);
+  const feeBumpTx = StellarSdk.TransactionBuilder.buildFeeBumpTransaction(
+    feeKeypair,
+    StellarSdk.BASE_FEE * 10, // fee bump pays 10x base fee
+    innerTx,
+    networkPassphrase,
+  );
+  feeBumpTx.sign(feeKeypair);
+  return feeBumpTx;
+}
+
+const FEE_BUMP_THRESHOLD_XLM = parseFloat(process.env.FEE_BUMP_THRESHOLD_XLM || '2');
+
 async function sendPayment({ senderSecret, receiverPublicKey, amount, memo }) {
   const senderKeypair = StellarSdk.Keypair.fromSecret(senderSecret);
-  
+
   let senderAccount;
   try {
     senderAccount = await server.loadAccount(senderKeypair.publicKey());
   } catch (error) {
-    // Check if account is not found (unfunded)
     if (error.response && error.response.status === 404) {
-      const err = new Error('Stellar account not found. Please fund your wallet to activate it.');
-      err.code = 'account_not_found';
+      const err = new Error(
+        "Stellar account not found. Please fund your wallet to activate it.",
+      );
+      err.code = "account_not_found";
       throw err;
     }
     throw error;
   }
 
-  const transaction = new StellarSdk.TransactionBuilder(senderAccount, {
+  const feePercent = parseFloat(process.env.PLATFORM_FEE_PERCENT || "0");
+  const platformWallet = process.env.PLATFORM_WALLET_PUBLIC_KEY;
+
+  const farmerAmount =
+    feePercent > 0 && platformWallet
+      ? parseFloat((amount * (1 - feePercent / 100)).toFixed(7))
+      : amount;
+  const feeAmount =
+    feePercent > 0 && platformWallet
+      ? parseFloat((amount * (feePercent / 100)).toFixed(7))
+      : 0;
+
+  const txBuilder = new StellarSdk.TransactionBuilder(senderAccount, {
     fee: StellarSdk.BASE_FEE,
     networkPassphrase,
   })
@@ -79,15 +141,42 @@ async function sendPayment({ senderSecret, receiverPublicKey, amount, memo }) {
       StellarSdk.Operation.payment({
         destination: receiverPublicKey,
         asset: StellarSdk.Asset.native(),
-        amount: amount.toFixed(7),
+        amount: farmerAmount.toFixed(7),
       }),
     )
     .addMemo(StellarSdk.Memo.text(memo || "FarmersMarket"))
-    .setTimeout(30)
-    .build();
+    .setTimeout(30);
 
+  if (feeAmount > 0 && platformWallet) {
+    txBuilder.addOperation(
+      StellarSdk.Operation.payment({
+        destination: platformWallet,
+        asset: StellarSdk.Asset.native(),
+        amount: feeAmount.toFixed(7),
+      }),
+    );
+  }
+
+  const transaction = txBuilder.build();
   transaction.sign(senderKeypair);
-  const result = await server.submitTransaction(transaction);
+
+  // Check if buyer balance is below threshold — wrap with fee bump if so
+  const feeAccountSecret = process.env.PLATFORM_FEE_ACCOUNT_SECRET;
+  const buyerBalance = await getBalance(senderKeypair.publicKey());
+  const usedFeeBump = feeAccountSecret && buyerBalance < FEE_BUMP_THRESHOLD_XLM;
+
+  let txToSubmit = transaction;
+  if (usedFeeBump) {
+    console.log(`[FeeBump] Buyer balance ${buyerBalance} XLM < threshold ${FEE_BUMP_THRESHOLD_XLM} XLM — wrapping with fee bump`);
+    txToSubmit = await wrapWithFeeBump(transaction, feeAccountSecret);
+  }
+
+  const result = await server.submitTransaction(txToSubmit);
+
+  if (usedFeeBump) {
+    console.log(`[FeeBump] Fee bump used for tx ${result.hash} — buyer: ${senderKeypair.publicKey()}`);
+  }
+
   return result.hash;
 }
 
@@ -113,6 +202,40 @@ async function getTransactions(publicKey) {
       }));
   } catch {
     return [];
+  }
+}
+
+module.exports = {
+  isTestnet,
+  server,
+  createWallet,
+  fundTestnetAccount,
+  getBalance,
+  sendPayment,
+  getTransactions,
+};
+// In-memory cache: publicKey -> { federationAddress, expiresAt }
+const _federationCache = new Map();
+const FEDERATION_TTL_MS = 10 * 60 * 1000; // 10 minutes
+
+/**
+ * Reverse-resolve a Stellar public key to a federation address (e.g. "alice*stellar.org").
+ * Returns null if not found or on any error. Results are cached for 10 minutes.
+ */
+async function lookupFederationAddress(publicKey) {
+  if (!publicKey) return null;
+  const cached = _federationCache.get(publicKey);
+  if (cached && Date.now() < cached.expiresAt) return cached.federationAddress;
+
+  try {
+    const record = await StellarSdk.FederationServer.resolve(publicKey);
+    const federationAddress = record.stellar_address || null;
+    _federationCache.set(publicKey, { federationAddress, expiresAt: Date.now() + FEDERATION_TTL_MS });
+    return federationAddress;
+  } catch {
+    // Cache null result to avoid hammering on repeated failures
+    _federationCache.set(publicKey, { federationAddress: null, expiresAt: Date.now() + FEDERATION_TTL_MS });
+    return null;
   }
 }
 
@@ -246,25 +369,132 @@ async function getContractState(contractId, prefix = null) {
       : "https://soroban.stellar.org");
   const sorobanServer = new StellarSdk.SorobanRpc.Server(sorobanRpcUrl);
 
-  const entries = [];
-  let hasMore = true;
-  let cursor = null;
+  // Build a ledger key for the contract's data entries
+  const contractAddress = new StellarSdk.Address(contractId);
+  const ledgerKey = StellarSdk.xdr.LedgerKey.contractData(
+    new StellarSdk.xdr.LedgerKeyContractData({
+      contract: contractAddress.toScAddress(),
+      key: StellarSdk.xdr.ScVal.scvLedgerKeyContractInstance(),
+      durability: StellarSdk.xdr.ContractDataDurability.persistent(),
+    })
+  );
 
-  while (hasMore) {
-    const response = await sorobanServer.getContractData(contractId, cursor);
-    if (response.data) {
-      const entry = {
-        key: StellarSdk.scValToNative(response.data.key, { asString: true }),
-        val: StellarSdk.scValToNative(response.data.val, { asString: true }),
-        durability: response.data.durability || "Persistent",
-      };
-      if (!prefix || entry.key.startsWith(prefix)) entries.push(entry);
+  let response;
+  try {
+    response = await sorobanServer.getLedgerEntries(ledgerKey);
+  } catch (e) {
+    if (e.message?.includes('not found') || e.code === 404) {
+      const notFound = new Error('Contract not found');
+      notFound.code = 404;
+      throw notFound;
     }
-    hasMore = response.latestLedger;
-    cursor = response.pagingToken;
+    throw e;
   }
 
+  const entries = (response.entries || []).map((entry) => {
+    const data = entry.val?.contractData?.();
+    const key = data ? StellarSdk.scValToNative(data.key()) : String(entry.key);
+    const val = data ? StellarSdk.scValToNative(data.val()) : null;
+    const durability = data?.durability()?.name || 'Persistent';
+    return { key: String(key), val, durability };
+  }).filter((e) => !prefix || String(e.key).startsWith(prefix));
+
   return entries;
+}
+
+async function invokeEscrowContract({
+  action,
+  senderSecret,
+  orderId,
+  buyerPublicKey,
+  farmerPublicKey,
+  amount,
+  timeoutUnix,
+}) {
+  const contractId = process.env.SOROBAN_ESCROW_CONTRACT_ID;
+  const xlmTokenContractId = process.env.SOROBAN_XLM_TOKEN_CONTRACT_ID;
+  if (!contractId) {
+    throw new Error("SOROBAN_ESCROW_CONTRACT_ID is not configured");
+  }
+  if (!xlmTokenContractId) {
+    throw new Error("SOROBAN_XLM_TOKEN_CONTRACT_ID is not configured");
+  }
+
+  const keypair = StellarSdk.Keypair.fromSecret(senderSecret);
+  const source = await server.loadAccount(keypair.publicKey());
+  const sorobanRpcUrl =
+    process.env.SOROBAN_RPC_URL ||
+    (isTestnet
+      ? "https://soroban-testnet.stellar.org"
+      : "https://soroban.stellar.org");
+  const sorobanServer = new StellarSdk.SorobanRpc.Server(sorobanRpcUrl);
+  const contract = new StellarSdk.Contract(contractId);
+
+  let operation;
+  if (action === "deposit") {
+    const amountStroops = BigInt(Math.round(Number(amount) * 10_000_000));
+    operation = contract.call(
+      "deposit",
+      StellarSdk.nativeToScVal(xlmTokenContractId, { type: "address" }),
+      StellarSdk.nativeToScVal(Number(orderId), { type: "u64" }),
+      StellarSdk.nativeToScVal(buyerPublicKey, { type: "address" }),
+      StellarSdk.nativeToScVal(farmerPublicKey, { type: "address" }),
+      StellarSdk.nativeToScVal(amountStroops, { type: "i128" }),
+      StellarSdk.nativeToScVal(Number(timeoutUnix), { type: "u64" }),
+    );
+  } else if (action === "release") {
+    operation = contract.call(
+      "release",
+      StellarSdk.nativeToScVal(xlmTokenContractId, { type: "address" }),
+      StellarSdk.nativeToScVal(Number(orderId), { type: "u64" }),
+    );
+  } else if (action === "refund") {
+    operation = contract.call(
+      "refund",
+      StellarSdk.nativeToScVal(xlmTokenContractId, { type: "address" }),
+      StellarSdk.nativeToScVal(Number(orderId), { type: "u64" }),
+    );
+  } else if (action === "dispute") {
+    operation = contract.call(
+      "dispute",
+      StellarSdk.nativeToScVal(Number(orderId), { type: "u64" }),
+      StellarSdk.nativeToScVal(keypair.publicKey(), { type: "address" }),
+    );
+  } else {
+    throw new Error(`Unsupported Soroban escrow action: ${action}`);
+  }
+
+  let tx = new StellarSdk.TransactionBuilder(source, {
+    fee: StellarSdk.BASE_FEE,
+    networkPassphrase,
+  })
+    .addOperation(operation)
+    .setTimeout(60)
+    .build();
+
+  tx = await sorobanServer.prepareTransaction(tx);
+  tx.sign(keypair);
+
+  const sendResult = await sorobanServer.sendTransaction(tx);
+  if (sendResult.status === "ERROR") {
+    throw new Error(
+      sendResult.errorResultXdr || "Soroban transaction submission failed",
+    );
+  }
+
+  const hash = sendResult.hash || tx.hash().toString("hex");
+  for (let i = 0; i < 15; i += 1) {
+    const txResult = await sorobanServer.getTransaction(hash);
+    if (txResult.status === "SUCCESS") {
+      return { txHash: hash, contractId };
+    }
+    if (txResult.status === "FAILED") {
+      throw new Error("Soroban transaction failed");
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+  }
+
+  throw new Error("Soroban transaction confirmation timed out");
 }
 
 // Resolve a federation address (e.g. farmer*farmersmarket.io) to a Stellar public key.
@@ -304,17 +534,236 @@ async function resolveFederationAddress(address, db) {
   }
 }
 
+// Mint reward tokens to a buyer after purchase
+async function mintRewardTokens(buyerAddress, amount) {
+  const contractId = process.env.REWARD_TOKEN_CONTRACT_ID;
+  if (!contractId) {
+    console.warn(
+      "[Stellar] REWARD_TOKEN_CONTRACT_ID not set, skipping reward mint",
+    );
+    return null;
+  }
+
+  const adminSecret = process.env.REWARD_TOKEN_ADMIN_SECRET;
+  if (!adminSecret) {
+    console.warn(
+      "[Stellar] REWARD_TOKEN_ADMIN_SECRET not set, skipping reward mint",
+    );
+    return null;
+  }
+
+  try {
+    const adminKeypair = StellarSdk.Keypair.fromSecret(adminSecret);
+    const adminAccount = await server.loadAccount(adminKeypair.publicKey());
+
+    const contract = new StellarSdk.Contract(contractId);
+    const transaction = new StellarSdk.TransactionBuilder(adminAccount, {
+      fee: StellarSdk.BASE_FEE,
+      networkPassphrase,
+    })
+      .addOperation(
+        contract.call(
+          "mint",
+          StellarSdk.nativeToScVal(buyerAddress, { type: "address" }),
+          StellarSdk.nativeToScVal(amount, { type: "i128" }),
+        ),
+      )
+      .setTimeout(30)
+      .build();
+
+    transaction.sign(adminKeypair);
+    const result = await server.submitTransaction(transaction);
+    return result.hash;
+  } catch (error) {
+    console.error("[Stellar] Failed to mint reward tokens:", error.message);
+    return null;
+  }
+}
+
+async function getAllBalances(publicKey) {
+  try {
+    const account = await server.loadAccount(publicKey);
+    return account.balances.map((b) => ({
+      asset_type: b.asset_type,
+      asset_code: b.asset_type === "native" ? "XLM" : b.asset_code,
+      asset_issuer: b.asset_type === "native" ? null : b.asset_issuer,
+      balance: parseFloat(b.balance),
+      limit: b.limit ? parseFloat(b.limit) : null,
+    }));
+  } catch {
+    return [];
+  }
+}
+
+async function addTrustline({ secret, assetCode, assetIssuer }) {
+  const keypair = StellarSdk.Keypair.fromSecret(secret);
+  const account = await server.loadAccount(keypair.publicKey());
+  const asset = new StellarSdk.Asset(assetCode, assetIssuer);
+
+  const tx = new StellarSdk.TransactionBuilder(account, {
+    fee: StellarSdk.BASE_FEE,
+    networkPassphrase,
+  })
+    .addOperation(StellarSdk.Operation.changeTrust({ asset }))
+    .setTimeout(30)
+    .build();
+
+  tx.sign(keypair);
+  const result = await server.submitTransaction(tx);
+  return result.hash;
+}
+
+async function removeTrustline({ secret, assetCode, assetIssuer }) {
+  const keypair = StellarSdk.Keypair.fromSecret(secret);
+  const account = await server.loadAccount(keypair.publicKey());
+  const asset = new StellarSdk.Asset(assetCode, assetIssuer);
+
+  // Check balance is zero before removing
+  const existing = account.balances.find(
+    (b) => b.asset_code === assetCode && b.asset_issuer === assetIssuer,
+  );
+  if (existing && parseFloat(existing.balance) > 0) {
+    const e = new Error("Cannot remove trustline with non-zero balance");
+    e.code = "non_zero_balance";
+    throw e;
+  }
+
+  const tx = new StellarSdk.TransactionBuilder(account, {
+    fee: StellarSdk.BASE_FEE,
+    networkPassphrase,
+  })
+    .addOperation(StellarSdk.Operation.changeTrust({ asset, limit: "0" }))
+    .setTimeout(30)
+    .build();
+
+  tx.sign(keypair);
+  const result = await server.submitTransaction(tx);
+  return result.hash;
+}
+
+function getPlatformFeeInfo(amount) {
+  const feePercent = parseFloat(process.env.PLATFORM_FEE_PERCENT || "0");
+  const platformWallet = process.env.PLATFORM_WALLET_PUBLIC_KEY || null;
+  if (!feePercent || !platformWallet) {
+    return {
+      feePercent: 0,
+      feeAmount: 0,
+      farmerAmount: amount,
+      platformWallet: null,
+    };
+  }
+  const feeAmount = parseFloat(((amount * feePercent) / 100).toFixed(7));
+  const farmerAmount = parseFloat((amount - feeAmount).toFixed(7));
+  return { feePercent, feeAmount, farmerAmount, platformWallet };
+}
+
+/**
+ * Find the best path and return the estimated source amount needed.
+ * Uses Horizon's /paths/strict-send to find available paths.
+ */
+async function getPathPaymentEstimate({
+  sourceAssetCode,
+  sourceAssetIssuer,
+  destPublicKey,
+  destAmount,
+}) {
+  const sourceAsset =
+    sourceAssetCode === "XLM"
+      ? StellarSdk.Asset.native()
+      : new StellarSdk.Asset(sourceAssetCode, sourceAssetIssuer);
+
+  const destAsset = StellarSdk.Asset.native();
+
+  // Use strict-receive: find cheapest source amount to deliver destAmount XLM
+  const paths = await server
+    .strictReceivePaths(
+      sourceAsset,
+      destAsset,
+      String(parseFloat(destAmount).toFixed(7)),
+    )
+    .call();
+
+  if (!paths.records || paths.records.length === 0) {
+    const e = new Error(`No payment path found from ${sourceAssetCode} to XLM`);
+    e.code = "no_path";
+    throw e;
+  }
+
+  const best = paths.records[0];
+  return {
+    sourceAmount: parseFloat(best.source_amount),
+    path: best.path,
+  };
+}
+
+/**
+ * PathPaymentStrictReceive: buyer pays in sourceAsset, farmer receives exactly destAmount XLM.
+ * sendMax is the maximum source asset the buyer is willing to spend (slippage guard).
+ */
+async function pathPayment({
+  senderSecret,
+  sourceAssetCode,
+  sourceAssetIssuer,
+  sendMax,
+  receiverPublicKey,
+  destAmount,
+  memo,
+}) {
+  const keypair = StellarSdk.Keypair.fromSecret(senderSecret);
+  const account = await server.loadAccount(keypair.publicKey());
+
+  const sourceAsset =
+    sourceAssetCode === "XLM"
+      ? StellarSdk.Asset.native()
+      : new StellarSdk.Asset(sourceAssetCode, sourceAssetIssuer);
+
+  const destAsset = StellarSdk.Asset.native();
+
+  const tx = new StellarSdk.TransactionBuilder(account, {
+    fee: StellarSdk.BASE_FEE,
+    networkPassphrase,
+  })
+    .addOperation(
+      StellarSdk.Operation.pathPaymentStrictReceive({
+        sendAsset: sourceAsset,
+        sendMax: parseFloat(sendMax).toFixed(7),
+        destination: receiverPublicKey,
+        destAsset,
+        destAmount: parseFloat(destAmount).toFixed(7),
+      }),
+    )
+    .addMemo(StellarSdk.Memo.text(memo || "FarmersMarket"))
+    .setTimeout(30)
+    .build();
+
+  tx.sign(keypair);
+  const result = await server.submitTransaction(tx);
+  return result.hash;
+}
+
 module.exports = {
   isTestnet,
   server,
   createWallet,
+  createWalletFromMnemonic,
+  deriveKeypairFromMnemonic,
   fundTestnetAccount,
   getBalance,
+  getAllBalances,
   sendPayment,
+  wrapWithFeeBump,
+  pathPayment,
+  getPathPaymentEstimate,
+  getPlatformFeeInfo,
   getTransactions,
+  lookupFederationAddress,
+  addTrustline,
+  removeTrustline,
   createClaimableBalance,
   createPreorderClaimableBalance,
   claimBalance,
+  invokeEscrowContract,
   getContractState,
   resolveFederationAddress,
+  mintRewardTokens,
 };

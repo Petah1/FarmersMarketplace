@@ -47,12 +47,31 @@ module.exports = {
     low_stock_threshold: z.coerce.number().int().nonnegative().optional(),
     image_url: z.string().optional().or(z.literal('')),
     tags: z.array(z.string()).optional(),
-  })),
+    nutrition: z.object({
+      calories: z.coerce.number().nonnegative('calories must be non-negative').optional(),
+      protein: z.coerce.number().nonnegative('protein must be non-negative').optional(),
+      carbs: z.coerce.number().nonnegative('carbs must be non-negative').optional(),
+      fat: z.coerce.number().nonnegative('fat must be non-negative').optional(),
+      fiber: z.coerce.number().nonnegative('fiber must be non-negative').optional(),
+      vitamins: z.record(z.coerce.number().nonnegative('vitamin values must be non-negative')).optional(),
+    }).optional(),
+    pricing_type: z.enum(['unit', 'weight']).optional(),
+    min_weight: z.coerce.number().positive('min_weight must be positive').optional(),
+    max_weight: z.coerce.number().positive('max_weight must be positive').optional(),
+  }).refine(d => {
+    if (d.pricing_type === 'weight') {
+      if (!d.min_weight || !d.max_weight) return false;
+      if (d.min_weight >= d.max_weight) return false;
+    }
+    return true;
+  }, { message: 'weight-based products require min_weight < max_weight' })),
 
   order: validate(z.object({
     product_id: z.coerce.number().int().positive('product_id must be a positive integer'),
     quantity: z.coerce.number().int().positive('quantity must be a positive integer'),
     address_id: z.coerce.number().int().positive().optional(),
+    use_soroban_escrow: z.coerce.boolean().optional(),
+    weight: z.coerce.number().positive('weight must be a positive number').optional(),
   })),
 
   updateOrderStatus: validate(z.object({
@@ -80,5 +99,28 @@ module.exports = {
     destination: z.string().regex(/^G[A-Z2-7]{55}$/, 'destination must be a valid Stellar public key'),
     amount: z.coerce.number().positive('amount must be a positive number').refine(v => v >= 0.0000001, 'amount too small'),
     memo: z.string().max(28, 'memo must be 28 characters or fewer').optional(),
+  })),
+
+  waitlist: validate(z.object({
+    quantity: z.coerce.number().int().positive('quantity must be a positive integer').max(1000, 'quantity cannot exceed 1000 units'),
+  })),
+
+  cropAlert: validate(z.object({
+    alert_type: z.enum(['pest', 'disease', 'weather', 'other']),
+    description: z.string().min(10, 'description must be at least 10 characters').max(1000, 'description must be 1000 characters or fewer'),
+    location: z.string().max(200, 'location must be 200 characters or fewer').optional(),
+    latitude: z.coerce.number().min(-90).max(90).optional(),
+    longitude: z.coerce.number().min(-180).max(180).optional(),
+    severity: z.enum(['low', 'medium', 'high']).optional(),
+  })),
+
+  confirmPassword: validate(z.object({
+    password: z.string().min(1, 'password is required'),
+  })),
+
+  recover: validate(z.object({
+    email: z.string().email('valid email required'),
+    password: z.string().min(1, 'password is required'),
+    mnemonic: z.string().min(1, 'mnemonic is required'),
   })),
 };

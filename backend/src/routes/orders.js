@@ -72,6 +72,8 @@ router.get('/fee-preview', (req, res) => {
   res.json({ success: true, total: amount, feePercent: info.feePercent, feeAmount: info.feeAmount, farmerAmount: info.farmerAmount });
 });
 
+// POST /api/orders - buyer places + pays for an order
+// (implementation below after swagger docs)
 // POST /api/orders - buyer places an order; TX submitted async
 router.post('/', auth, validate.order, async (req, res) => {
   if (req.user.role !== 'buyer') {
@@ -142,13 +144,14 @@ const { getCachedResponse, cacheResponse } = require('../utils/idempotency');
 router.post('/', auth, validate.order, async (req, res) => {
   if (req.user.role !== 'buyer') return err(res, 403, 'Only buyers can place orders', 'forbidden');
 
-  const { product_id, address_id } = req.body;
-  const useSorobanEscrow = Boolean(req.body.use_soroban_escrow);
   const { product_id, address_id, coupon_code } = req.body;
+  const useSorobanEscrow = Boolean(req.body.use_soroban_escrow);
   const quantity = parseInt(req.body.quantity, 10);
   if (!product_id || Number.isNaN(quantity) || quantity < 1) {
     return err(res, 400, 'product_id and a positive quantity are required', 'validation_error');
   }
+
+  const idempotencyKey = req.headers['x-idempotency-key'];
   if (idempotencyKey) {
     const cached = getCachedResponse(idempotencyKey);
     if (cached) {
@@ -175,6 +178,12 @@ router.post('/', auth, validate.order, async (req, res) => {
   );
   const buyer = buyerRows[0];
 
+  // PostgreSQL: fetch product, buyer, compute total
+  const { rows: buyerRows } = await db.query(
+    'SELECT id, name, email, stellar_public_key, stellar_secret_key, referred_by, referral_bonus_sent FROM users WHERE id = $1',
+    [req.user.id]
+  );
+  const buyer = buyerRows[0];
   const unitPrice = await getEffectiveUnitPrice(product, product_id, quantity);
   const subtotal = unitPrice * quantity;
   let discount = 0;

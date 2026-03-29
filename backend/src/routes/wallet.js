@@ -32,10 +32,8 @@ const jwt = require('jsonwebtoken');
 const db = require('../db/schema');
 const auth = require('../middleware/auth');
 const validate = require('../middleware/validate');
-const { getBalance, getTransactions, fundTestnetAccount, sendPayment, server } = require('../utils/stellar');
 const stellar = require('../utils/stellar');
-const { getBalance, getAllBalances, getTransactions, fundTestnetAccount, sendPayment, addTrustline, removeTrustline } = stellar;
-const { lookupFederationAddress } = stellar;
+const { getBalance, getAllBalances, getTransactions, fundTestnetAccount, sendPayment, addTrustline, removeTrustline, lookupFederationAddress, server } = stellar;
 const { err } = require('../middleware/error');
 
 /**
@@ -168,6 +166,14 @@ router.post("/send", auth, validate.sendXLM, async (req, res) => {
     });
   }
 
+  // Clean up when the client disconnects
+  req.on('close', cleanup);
+});
+
+// POST /api/wallet/fund
+router.post('/fund', auth, async (req, res) => {
+  if (!stellar.isTestnet) return err(res, 400, 'Only available on testnet', 'testnet_only');
+  const { rows } = await db.query('SELECT stellar_public_key FROM users WHERE id = $1', [req.user.id]);
   try {
     const txHash = await sendPayment({
       senderSecret: user.stellar_secret_key,
@@ -261,6 +267,7 @@ router.post("/withdraw", auth, async (req, res) => {
       baseReserve: BASE_RESERVE_XLM,
       availableAfter: Number((available - amount).toFixed(7)),
     });
+    res.json({ txHash, amount, destination, memo: memo || null });
   } catch (e) {
     const stellarMsg =
       e?.response?.data?.extras?.result_codes?.operations?.[0] || e.message;

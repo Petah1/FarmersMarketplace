@@ -11,6 +11,7 @@ import Pagination from "../components/Pagination";
 import Spinner from "../components/Spinner";
 import AuctionCard from "../components/AuctionCard";
 import FlashSaleCountdown from "../components/FlashSaleCountdown";
+import RecentlyCompared from "../components/RecentlyCompared";
 import { useTranslation } from "react-i18next";
 
 const MapView = lazy(() => import("../components/MapView"));
@@ -261,6 +262,20 @@ const EMPTY_FILTERS = {
   radius: "",
   excludeAllergens: [],
 };
+
+function getFreshnessBadge(bestBefore) {
+  if (!bestBefore) return null;
+  const today = new Date();
+  const expiry = new Date(bestBefore);
+  const diffTime = expiry - today;
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  if (diffDays < 0) return null; // expired, but shouldn't be shown
+  if (diffDays === 0) return { text: 'Expires today', color: '#ff6b6b' };
+  if (diffDays === 1) return { text: 'Expires tomorrow', color: '#ffa726' };
+  if (diffDays <= 3) return { text: `${diffDays} days left`, color: '#ffb74d' };
+  if (diffDays <= 7) return { text: `${diffDays} days left`, color: '#81c784' };
+  return { text: 'Fresh', color: '#4caf50' };
+}
 
 export default function Marketplace() {
   const { t } = useTranslation();
@@ -523,7 +538,54 @@ export default function Marketplace() {
         </div>
       )}
 
-      <div style={s.filters}>
+      {/* Recently Compared Section */}
+      {compareProducts.length > 0 && (
+        <div style={{ marginBottom: 36 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+            <div style={{ ...s.title, fontSize: 20, marginBottom: 0 }}>
+              📊 Currently Comparing
+            </div>
+            <button
+              style={{ ...s.resetBtn, fontSize: 12 }}
+              onClick={() => {
+                const { clearProducts } = useCompare();
+                clearProducts();
+              }}
+            >
+              Clear
+            </button>
+          </div>
+          <div style={s.grid}>
+            {compareProducts.map((p) => (
+              <div
+                key={p.id}
+                style={{ ...s.card, opacity: 0.9 }}
+                onClick={() => navigate(`/product/${p.id}`)}
+              >
+                {p.image_url ? (
+                  <img
+                    src={p.image_url}
+                    alt={p.name}
+                    style={{
+                      width: "100%",
+                      height: 140,
+                      objectFit: "cover",
+                      borderRadius: 8,
+                      marginBottom: 10,
+                    }}
+                  />
+                ) : (
+                  <div style={{ fontSize: 32, marginBottom: 8 }}>🥬</div>
+                )}
+                <div style={s.name}>{p.name}</div>
+                <div style={s.price}>{p.price} XLM</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <RecentlyCompared />
         <input
           style={s.input}
           placeholder={t("marketplace.searchPlaceholder")}

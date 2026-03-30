@@ -482,6 +482,7 @@ export default function Marketplace() {
           onChange={(e) =>
             set("category", e.target.value === "all" ? "" : e.target.value)
           }
+          aria-label="Filter by category"
         >
           {CATEGORIES.map((c) => (
             <option key={c} value={c === "all" ? "" : c}>
@@ -531,6 +532,7 @@ export default function Marketplace() {
           style={s.select}
           value={filters.available}
           onChange={(e) => set("available", e.target.value)}
+          aria-label="Filter by availability"
         >
           <option value="true">{t("marketplace.inStock")}</option>
           <option value="false">{t("marketplace.allProducts")}</option>
@@ -637,6 +639,10 @@ export default function Marketplace() {
                 (e.currentTarget.style.transform = "translateY(-2px)")
               }
               onMouseLeave={(e) => (e.currentTarget.style.transform = "")}
+              role="button"
+              tabIndex={0}
+              aria-label={`View ${p.name}`}
+              onKeyDown={(e) => e.key === 'Enter' && navigate(`/product/${p.id}`)}
             >
               <div style={s.cardHeader}>
                 <div style={{ flex: 1 }}>
@@ -663,11 +669,8 @@ export default function Marketplace() {
                       e.stopPropagation();
                       toggleFavorite(p.id).catch(() => {});
                     }}
-                    title={
-                      isFavorited(p.id)
-                        ? "Remove from favorites"
-                        : "Add to favorites"
-                    }
+                    aria-label={isFavorited(p.id) ? "Remove from favorites" : "Add to favorites"}
+                    aria-pressed={isFavorited(p.id)}
                   >
                     {isFavorited(p.id) ? "❤️" : "🤍"}
                   </button>

@@ -17,6 +17,13 @@ router.get('/:contractId/state', auth, async (req, res) => {
 
   if (!validateContractId(contractId)) {
     return err(res, 400, 'Invalid contractId format (base32 or hex expected)', 'invalid_contract_id');
+  if (!/^[A-Z2-7]{56}$|^[0-9a-fA-F]{64}$/.test(contractId)) {
+    return err(
+      res,
+      400,
+      'Invalid contractId format (base32 or hex expected)',
+      'invalid_contract_id'
+    );
   }
 
   try {

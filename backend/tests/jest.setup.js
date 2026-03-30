@@ -37,6 +37,18 @@ jest.mock('../src/utils/stellar', () => ({
   getBalance: jest.fn().mockResolvedValue(1000),
   getTransactions: jest.fn().mockResolvedValue([]),
   fundTestnetAccount: jest.fn().mockResolvedValue({}),
+  sendPayment:        jest.fn().mockResolvedValue('TXHASH123'),
+  createWallet:           jest.fn(() => ({ publicKey: 'GPUBKEY', secretKey: 'SSECRET' })),
+  getBalance:             jest.fn().mockResolvedValue(1000),
+  getTransactions:        jest.fn().mockResolvedValue([]),
+  fundTestnetAccount:     jest.fn().mockResolvedValue({}),
+  sendPayment:            jest.fn().mockResolvedValue('TXHASH123'),
+  isTestnet:              true,
+  createClaimableBalance: jest.fn().mockResolvedValue({ txHash: 'ESCROW_TX', balanceId: 'BALANCE_ID_001' }),
+  createPreorderClaimableBalance: jest.fn().mockResolvedValue({ txHash: 'PREORDER_TX', balanceId: 'PREORDER_BALANCE_001' }),
+  claimBalance:           jest.fn().mockResolvedValue('CLAIM_TX_001'),
+  getContractState:       jest.fn(),
+  simulateContractCall:   jest.fn(),
   sendPayment: jest.fn().mockResolvedValue('TXHASH123'),
   createWallet: jest.fn(() => ({ publicKey: 'GPUBKEY', secretKey: 'SSECRET' })),
   getBalance: jest.fn().mockResolvedValue(1000),
@@ -91,6 +103,7 @@ beforeEach(() => {
     balanceId: 'BALANCE_ID_001',
   });
   stellar.claimBalance.mockResolvedValue('CLAIM_TX_001');
+  stellar.simulateContractCall = jest.fn();
 
   const mailer = jest.requireMock('../src/utils/mailer');
   mailer.sendOrderEmails.mockResolvedValue({});

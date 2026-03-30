@@ -328,6 +328,7 @@ router.use('/api/analytics', require('./analytics'));
 router.use('/api/admin', require('./admin'));
 router.use('/api/farmers', require('./farmers'));
 router.use('/api/rates', require('./rates'));
+router.use('/api/recommendations', require('./recommendations'));
 router.use('/api/favorites', require('./favorites'));
 router.use('/api/addresses', require('./addresses'));
 router.use('/api/messages', require('./messages'));
@@ -355,6 +356,7 @@ router.use('/api/admin', require('./admin'));
 router.use('/api/farmers', require('./farmers'));
 router.use('/api/farmers', require('./bundleDiscounts'));
 router.use('/api/rates', require('./rates'));
+router.use('/api/recommendations', require('./recommendations'));
 router.use('/api/favorites', require('./favorites'));
 router.use('/api/addresses', require('./addresses'));
 router.use('/api/messages', require('./messages'));
@@ -391,6 +393,7 @@ router.use('/api/analytics', require('./analytics'));
 router.use('/api/admin', require('./admin'));
 router.use('/api/farmers', require('./farmers'));
 router.use('/api/rates', require('./rates'));
+router.use('/api/recommendations', require('./recommendations'));
 router.use('/api', require('./reviews'));
 router.use('/api/favorites', require('./favorites'));
 router.use('/api/auth', require('./auth'));
@@ -402,9 +405,11 @@ router.use('/api/analytics', require('./analytics'));
 router.use('/api/admin', require('./admin'));
 router.use('/api/farmers', require('./farmers'));
 router.use('/api/rates', require('./rates'));
+router.use('/api/recommendations', require('./recommendations'));
 router.use('/api', require('./reviews'));
 router.use('/api/favorites', require('./favorites'));
 router.use('/api/rates', require('./rates'));
+router.use('/api/recommendations', require('./recommendations'));
 router.use('/api', require('./reviews'));
 
 // QR code endpoint (mounted under products so /:id/qr resolves correctly)
@@ -462,5 +467,7 @@ router.use('/api/products/bulk', require('./bulkUpload'));
 router.use('/api/messages', require('./messages'));
 
 router.get('/api/health', (_, res) => res.json({ status: 'ok' }));
+
+router.use('/api/announcements', require('./announcements'));
 
 module.exports = router;

@@ -232,6 +232,8 @@ export const api = {
   adminGetContractAcl: (registryId) => request(`/admin/contracts/${registryId}/acl`),
   adminGrantContractAcl: (registryId, body) => request(`/admin/contracts/${registryId}/acl`, { method: 'POST', body }),
   adminRevokeContractAcl: (registryId, address) => request(`/admin/contracts/${registryId}/acl/${encodeURIComponent(address)}`, { method: 'DELETE' }),
+  adminGetContractAlerts: (acknowledged) => request(`/admin/contract-alerts${acknowledged !== undefined ? `?acknowledged=${acknowledged}` : ''}`),
+  adminAcknowledgeContractAlert: (id) => request(`/admin/contract-alerts/${id}/acknowledge`, { method: 'PATCH' }),
 
   getAddresses: () => request('/addresses'),
 

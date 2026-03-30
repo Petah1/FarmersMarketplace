@@ -154,6 +154,7 @@ export const api = {
     return request(`/products/${productId}/video`, { method: 'POST', body: form });
   },
   getProductImages: (productId) => request(`/products/${productId}/images`),
+  getRecommendations: () => request('/recommendations'),
   uploadProductImages: (productId, files) => {
     const form = new FormData();
     files.forEach((f) => form.append('images', f));
@@ -225,6 +226,7 @@ export const api = {
   adminGetStats: () => request('/admin/stats'),
   adminGetContracts: (qs = '') => request(`/admin/contracts${qs}`),
   adminRegisterContract: (body) => request('/admin/contracts', { method: 'POST', body }),
+  adminDeployContract: (formData) => request('/admin/contracts/deploy', { method: 'POST', body: formData }),
   adminDeregisterContract: (id) => request(`/admin/contracts/${id}`, { method: 'DELETE' }),
   adminGetContractUpgrades: (registryId) => request(`/admin/contracts/${registryId}/upgrades`),
   adminRecordContractUpgrade: (registryId, body) =>
@@ -254,6 +256,7 @@ export const api = {
 
   placeOrderWithBudgetOverride: (body) => request('/orders', { method: 'POST', body: { ...body, budget_override_confirmed: true } }),
   // params may include: status, page, limit
+  getOrderPaymentLink: (id) => request(`/orders/${id}/payment-link`),
   getOrders:    (params = {})  => request(`/orders${toQs(params)}`),
   getSales:     (params = {})  => request(`/orders/sales${toQs(params)}`),
 
@@ -275,6 +278,11 @@ export const api = {
 
   placeOrder: (body) => request('/orders', { method: 'POST', body }),
   getOrderStatus: (id) => request(`/orders/${id}/status`),
+  getOrderPaymentLink: (orderId) => request(`/orders/${orderId}/payment-link`),
+  getOrderPaymentLinkQr: (orderId) => `/api/orders/${orderId}/payment-link/qr`,
+  getOrders: (params = {}) => request(`/orders${toQs(params)}`),
+  getSales: (params = {}) => request(`/orders/sales${toQs(params)}`),
+  updateOrderStatus: (id, status) => request(`/orders/${id}/status`, { method: 'PATCH', body: { status } }),
 
   getAuctions: () => request('/auctions'),
   getAuction: (id) => request(`/auctions/${id}`),

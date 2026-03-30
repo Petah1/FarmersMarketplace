@@ -1081,6 +1081,69 @@ router.post('/:id/tiers', auth, async (req, res) => {
   res.json({ success: true, data: newTiers });
 });
 
+// PATCH /api/products/bulk-price — update prices for multiple products atomically (farmer only)
+router.patch('/bulk-price', auth, async (req, res) => {
+  if (req.user.role !== 'farmer') return err(res, 403, 'Farmers only', 'forbidden');
+
+  const { updates, adjustment_percent } = req.body;
+  if (!Array.isArray(updates) || updates.length === 0) {
+    return err(res, 400, 'updates must be a non-empty array of { id, price }', 'validation_error');
+  }
+
+  // Validate each entry
+  for (let i = 0; i < updates.length; i++) {
+    const u = updates[i];
+    if (!u.id || typeof u.id !== 'number') {
+      return err(res, 400, `updates[${i}].id must be a number`, 'validation_error');
+    }
+    if (adjustment_percent == null && (typeof u.price !== 'number' || u.price <= 0)) {
+      return err(res, 400, `updates[${i}].price must be a positive number`, 'validation_error');
+    }
+  }
+
+  if (adjustment_percent != null && typeof adjustment_percent !== 'number') {
+    return err(res, 400, 'adjustment_percent must be a number', 'validation_error');
+  }
+
+  const ids = updates.map((u) => u.id);
+
+  // Fetch all products that belong to this farmer
+  const placeholders = ids.map((_, i) => `$${i + 2}`).join(', ');
+  const { rows: owned } = await db.query(
+    `SELECT id, price FROM products WHERE farmer_id = $1 AND id IN (${placeholders})`,
+    [req.user.id, ...ids]
+  );
+  const ownedIds = new Set(owned.map((r) => Number(r.id)));
+
+  const updated = [];
+  const failed = [];
+
+  for (const u of updates) {
+    if (!ownedIds.has(u.id)) {
+      failed.push({ id: u.id, reason: 'Not found or not owned by you' });
+      continue;
+    }
+
+    let newPrice;
+    if (adjustment_percent != null) {
+      const current = owned.find((r) => Number(r.id) === u.id).price;
+      newPrice = parseFloat((current * (1 + adjustment_percent / 100)).toFixed(7));
+    } else {
+      newPrice = u.price;
+    }
+
+    if (newPrice <= 0) {
+      failed.push({ id: u.id, reason: 'Computed price must be positive' });
+      continue;
+    }
+
+    await db.query('UPDATE products SET price = $1 WHERE id = $2', [newPrice, u.id]);
+    updated.push({ id: u.id, price: newPrice });
+  }
+
+  res.json({ success: true, data: { updated, failed } });
+});
+
 // GET /api/products/:id/price-history — last 30 days
 router.get('/:id/price-history', async (req, res) => {
   const cutoff = db.isPostgres

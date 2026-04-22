@@ -44,6 +44,8 @@ db.exec(`
 
 // Migrate existing DB: add category column if missing
 try { db.exec(`ALTER TABLE products ADD COLUMN category TEXT DEFAULT 'other'`); } catch {}
+// Migrate: add grade column if missing
+try { db.exec(`ALTER TABLE products ADD COLUMN grade TEXT`); } catch {}
 
 module.exports = db;
 

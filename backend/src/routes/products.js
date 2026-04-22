@@ -4,40 +4,60 @@ const auth = require('../middleware/auth');
 const validate = require('../middleware/validate');
 
 // GET /api/products - public browse with optional filters
-// Query params: category, minPrice, maxPrice, seller (farmer name), available (default true)
+// Query params: category, grade, minPrice, maxPrice, seller (farmer name), available (default true), page, limit
 router.get('/', (req, res) => {
-  const page = Math.max(1, parseInt(req.query.page) || 1);
-  const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
-  const offset = (page - 1) * limit;
+  const { category, grade, minPrice, maxPrice, seller, available = 'true', page = '1', limit = '20' } = req.query;
+  const pageNum = Math.max(1, parseInt(page));
+  const limitNum = Math.min(100, Math.max(1, parseInt(limit)));
+  const offset = (pageNum - 1) * limitNum;
 
-  const total = db.prepare('SELECT COUNT(*) as count FROM products WHERE quantity > 0').get().count;
-  const products = db.prepare(`
-    SELECT p.*, u.name as farmer_name
-    FROM products p
-    JOIN users u ON p.farmer_id = u.id
-    WHERE p.quantity > 0
-    ORDER BY p.created_at DESC
-    LIMIT ? OFFSET ?
-  `).all(limit, offset);
+  let whereSql = `p.quantity > 0`;
+  const countParams = [];
+  const dataParams = [];
+
+  if (available !== 'true') { 
+    whereSql = '1=0'; // No available products
+  } else {
+    if (category) { 
+      whereSql += ` AND p.category = ?`; 
+      countParams.push(category); 
+      dataParams.push(category); 
+    }
+    if (grade) { 
+      whereSql += ` AND p.grade = ?`; 
+      countParams.push(grade); 
+      dataParams.push(grade); 
+    }
+    if (minPrice) { 
+      const val = parseFloat(minPrice); 
+      whereSql += ` AND p.price >= ?`; 
+      countParams.push(val); 
+      dataParams.push(val); 
+    }
+    if (maxPrice) { 
+      const val = parseFloat(maxPrice); 
+      whereSql += ` AND p.price <= ?`; 
+      countParams.push(val); 
+      dataParams.push(val); 
+    }
+    if (seller) { 
+      const val = `%${seller}%`; 
+      whereSql += ` AND u.name LIKE ?`; 
+      countParams.push(val); 
+      dataParams.push(val); 
+    }
+  }
+
+  const countSql = `SELECT COUNT(*) as count FROM products p JOIN users u ON p.farmer_id = u.id WHERE ${whereSql}`;
+  const total = db.prepare(countSql).get(...countParams).count;
+
+  const dataSql = `SELECT p.*, u.name as farmer_name FROM products p JOIN users u ON p.farmer_id = u.id WHERE ${whereSql} ORDER BY p.created_at DESC LIMIT ? OFFSET ?`;
+  const products = db.prepare(dataSql).all(...dataParams, limitNum, offset);
 
   res.json({
     data: products,
-    meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
+    meta: { total, page: pageNum, limit: limitNum, totalPages: Math.ceil(total / limitNum || 1) }
   });
-  const { category, minPrice, maxPrice, seller, available = 'true' } = req.query;
-
-  let sql = `SELECT p.*, u.name as farmer_name FROM products p JOIN users u ON p.farmer_id = u.id WHERE 1=1`;
-  const params = [];
-
-  if (available === 'true') { sql += ` AND p.quantity > 0`; }
-  if (category)  { sql += ` AND p.category = ?`;              params.push(category); }
-  if (minPrice)  { sql += ` AND p.price >= ?`;                params.push(parseFloat(minPrice)); }
-  if (maxPrice)  { sql += ` AND p.price <= ?`;                params.push(parseFloat(maxPrice)); }
-  if (seller)    { sql += ` AND u.name LIKE ?`;               params.push(`%${seller}%`); }
-
-  sql += ` ORDER BY p.created_at DESC`;
-
-  res.json(db.prepare(sql).all(...params));
 });
 
 // GET /api/products/categories - list distinct categories
@@ -68,17 +88,17 @@ router.post('/', auth, validate.product, (req, res) => {
   if (req.user.role !== 'farmer')
     return res.status(403).json({ error: 'Only farmers can list products' });
 
-  const { name, description, unit, category } = req.body;
-  const price    = parseFloat(req.body.price);
+  const { name, description, unit, category, grade = '' } = req.body;
+  const price = parseFloat(req.body.price);
   const quantity = parseInt(req.body.quantity, 10);
 
-  if (!name || !name.trim())          return res.status(400).json({ error: 'Product name is required' });
-  if (isNaN(price)    || price <= 0)  return res.status(400).json({ error: 'Price must be a positive number' });
+  if (!name || !name.trim()) return res.status(400).json({ error: 'Product name is required' });
+  if (isNaN(price) || price <= 0) return res.status(400).json({ error: 'Price must be a positive number' });
   if (isNaN(quantity) || quantity < 1) return res.status(400).json({ error: 'Quantity must be a positive integer' });
 
   const result = db.prepare(
-    'INSERT INTO products (farmer_id, name, description, category, price, quantity, unit) VALUES (?, ?, ?, ?, ?, ?, ?)'
-  ).run(req.user.id, name.trim(), description || '', category || 'other', price, quantity, unit || 'unit');
+    'INSERT INTO products (farmer_id, name, description, category, grade, price, quantity, unit) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+  ).run(req.user.id, name.trim(), description || '', category || 'other', grade, price, quantity, unit || 'unit');
 
   res.json({ id: result.lastInsertRowid, message: 'Product listed' });
 });
